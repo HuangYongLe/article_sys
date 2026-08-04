@@ -1,0 +1,19 @@
+node_modules
+.nuxt
+.output
+.data
+dist
+.env
+.env.*
+!.env.example
+local.db*
+*.log
+.DS_Store
+.vercel
+
+# 临时/敏感：curl 导出的会话 cookie 与调试文本
+*.txt
+cookies*.txt
+# 智能体工作记忆与本地验证截图，不纳入源码仓库
+.workbuddy/
+outputs/

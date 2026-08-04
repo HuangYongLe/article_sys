@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@source "../../../shared";
+
+@layer base {
+  :root {
+    color-scheme: dark light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* 字体优化：系统字体栈（无需网络请求、零布局抖动），并启用抗锯齿与可读性渲染 */
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+      "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis: none;
+  }
+}
+

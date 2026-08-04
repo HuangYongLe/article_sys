@@ -1,0 +1,17 @@
+{
+  "id": "a17b8357-868b-483f-8d09-7a95dc229281",
+  "title": "Hello World",
+  "slug": "hello-world",
+  "summary": null,
+  "content": "# Hi\n\nSome **bold** text.\n\n```js\nconsole.log(1)\n```",
+  "coverUrl": null,
+  "status": "draft",
+  "visibility": "public",
+  "moderationNote": null,
+  "publishedAt": null,
+  "viewCount": 0,
+  "createdAt": 1785468106000,
+  "updatedAt": 1785468106000,
+  "tagIds": [],
+  "authorId": "53fbff36-1dd6-4be9-8686-a93575d7680f"
+}
