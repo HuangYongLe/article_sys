@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'auth', middleware: 'guest' })
 
 const toast = useToast()
-const captcha = useCaptcha()
+const captchaRef = ref<{ verified: boolean, id: string, answer: string, reset: () => void } | null>(null)
 const form = reactive({ username: '', displayName: '', email: '', password: '', confirm: '' })
 const loading = ref(false)
 const registered = ref(false)
@@ -17,7 +17,7 @@ function validate(): string | null {
   if (form.password !== form.confirm) {
     return '两次输入的密码不一致'
   }
-  if (!captcha.answer) {
+  if (!captchaRef.value?.verified) {
     return '请完成人机验证'
   }
   return null
@@ -38,14 +38,14 @@ async function submit() {
         displayName: form.displayName,
         email: form.email || undefined,
         password: form.password,
-        captchaId: captcha.id,
-        captchaAnswer: captcha.answer,
+        captchaId: captchaRef.value!.id,
+        captchaAnswer: captchaRef.value!.answer,
       },
     })
     registered.value = true
   }
   catch (e: any) {
-    captcha.refresh()
+    captchaRef.value?.reset()
     toast.add({ title: e?.data?.message ?? '注册失败，请稍后重试', color: 'error' })
   }
   finally {
@@ -132,32 +132,7 @@ async function submit() {
       </UFormField>
 
       <UFormField label="人机验证" name="captcha">
-        <div class="flex flex-wrap items-center gap-3">
-          <img
-            :src="captcha.src"
-            alt="人机验证图片，请填写计算结果"
-            title="看不清？点击图片换一张"
-            class="h-[60px] w-[200px] cursor-pointer rounded-lg border border-default bg-elevated"
-            @click="captcha.refresh()"
-          >
-          <UButton
-            type="button"
-            variant="ghost"
-            color="neutral"
-            icon="i-lucide-refresh-cw"
-            :loading="captcha.loading"
-            title="换一张"
-            @click="captcha.refresh()"
-          />
-          <UInput
-            v-model="captcha.answer"
-            size="xl"
-            placeholder="计算结果"
-            inputmode="numeric"
-            autocomplete="off"
-            class="w-32"
-          />
-        </div>
+        <SliderCaptcha ref="captchaRef" />
       </UFormField>
 
       <UButton type="submit" block size="xl" :loading="loading" class="mt-1">提交注册</UButton>

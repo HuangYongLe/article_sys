@@ -4,7 +4,8 @@ definePageMeta({ layout: 'auth', middleware: 'guest' })
 const route = useRoute()
 const { fetch: refreshSession } = useUserSession()
 const toast = useToast()
-const captcha = useCaptcha()
+
+const captchaRef = ref<{ verified: boolean, id: string, answer: string, reset: () => void } | null>(null)
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
@@ -14,7 +15,7 @@ async function submit() {
     toast.add({ title: '请输入用户名和密码', color: 'warning' })
     return
   }
-  if (!captcha.answer) {
+  if (!captchaRef.value?.verified) {
     toast.add({ title: '请完成人机验证', color: 'warning' })
     return
   }
@@ -24,8 +25,8 @@ async function submit() {
       method: 'POST',
       body: {
         ...form,
-        captchaId: captcha.id,
-        captchaAnswer: captcha.answer,
+        captchaId: captchaRef.value.id,
+        captchaAnswer: captchaRef.value.answer,
       },
     })
     await refreshSession()
@@ -34,7 +35,7 @@ async function submit() {
     await navigateTo(redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : fallback)
   }
   catch (err: any) {
-    captcha.refresh()
+    captchaRef.value?.reset()
     toast.add({ title: err?.data?.message ?? '登录失败，请稍后重试', color: 'error' })
   }
   finally {
@@ -77,32 +78,7 @@ async function submit() {
       </UFormField>
 
       <UFormField label="人机验证" name="captcha">
-        <div class="flex flex-wrap items-center gap-3">
-          <img
-            :src="captcha.src"
-            alt="人机验证图片，请填写计算结果"
-            title="看不清？点击图片换一张"
-            class="h-[60px] w-[200px] cursor-pointer rounded-lg border border-default bg-elevated"
-            @click="captcha.refresh()"
-          >
-          <UButton
-            type="button"
-            variant="ghost"
-            color="neutral"
-            icon="i-lucide-refresh-cw"
-            :loading="captcha.loading"
-            title="换一张"
-            @click="captcha.refresh()"
-          />
-          <UInput
-            v-model="captcha.answer"
-            size="xl"
-            placeholder="计算结果"
-            inputmode="numeric"
-            autocomplete="off"
-            class="w-32"
-          />
-        </div>
+        <SliderCaptcha ref="captchaRef" />
       </UFormField>
 
       <UButton type="submit" block size="xl" :loading="loading" class="mt-1">登录</UButton>
