@@ -1,41 +1,9 @@
-import { existsSync, readdirSync } from 'node:fs'
-import { join, relative } from 'node:path'
-
-// Vercel 的 nft 静态追踪追不到 @libsql 按平台动态 require 的原生二进制
-// （代码里是 require(`@libsql/${target}`)），导致 serverless 函数缺 .node。
-// 解决办法：把 @libsql/client / libsql 设为 external，nft 会把它们整包连同
-// 嵌套的原生平台包一起复制进函数 bundle 的 node_modules；同时用 traceInclude
-// 强制把已安装的原生包打进函数包。注意：traceInclude 必须给“真实存在的路径”
-// （相对项目根的 node_modules 路径），不能给裸模块名——nft 会把裸名当成相对
-// 根目录的路径去读而找不到文件。这里按当前构建平台动态挑已安装的原生包，
-// 同时兼顾“顶层 node_modules/@libsql”和“被 npm 嵌套到
-// node_modules/libsql/node_modules/@libsql”两种情况。
-// 关键点：Vercel 上 npm 常常只创建了原生包目录却未落地 .node 文件（空目录/stub），
-// 若把这种目录传给 traceInclude，nft 会直接报 “File .../@libsql/linux-x64-gnu does
-// not exist” 使整次构建失败。因此这里只收录“确实含 package.json 且含 .node 二进制”
-// 的目录；缺失/不完整的原生包由 scripts/ensure-libsql-native.mjs（postinstall）在
-// Linux 构建时强制补齐真实文件后再被此处收录。
-const libsqlNativeCandidates = [
-  join(process.cwd(), 'node_modules/@libsql'),
-  join(process.cwd(), 'node_modules/libsql/node_modules/@libsql'),
-]
-const libsqlNativeInclude = libsqlNativeCandidates
-  .filter(existsSync)
-  .flatMap((dir) =>
-    readdirSync(dir)
-      .filter((d) => /^(linux-|win32-|darwin-|freebsd-)/.test(d))
-      // 只收录真正完整安装的原生包（含 package.json 且含 .node 二进制），
-      // 跳过 Vercel 上的空目录/stub，避免 nft traceInclude 报错
-      .filter((d) => {
-        // Vercel 运行在 glibc 上，libsql 只会加载 linux-x64-gnu；构建缓存里常残留损坏的
-        // musl stub（含一个游离 .node），一旦被 traceInclude 就会让 nft 报
-        // “File .../linux-x64-musl does not exist”。显式排除 musl 变体。
-        if (d.includes('musl')) return false
-        const p = join(dir, d)
-        return existsSync(join(p, 'package.json')) && readdirSync(p).some((f) => f.endsWith('.node'))
-      })
-      .map((d) => relative(process.cwd(), join(dir, d))),
-  )
+// libSQL 原生二进制在 Vercel 上由 nft 静态追踪极不稳定（构建缓存 / 可选依赖落地
+// 时机都会导致 buildEnd 报 “File .../@libsql/linux-x64-gnu does not exist”）。
+// 根治：不把原生包塞进 traceInclude，而是把 @libsql 整条链路标记为 external，
+// 由 Vercel 安装阶段落到函数 bundle 的 node_modules 里、运行时再解析。
+// 生产若配置了 TURSO_DATABASE_URL，db.ts 会走纯 JS 的 @libsql/client/web，
+// 根本不依赖任何原生 .node 二进制，最为稳妥。
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -58,12 +26,15 @@ export default defineNuxtConfig({
   },
   nitro: {
     externals: {
-      external: ['@libsql/client', '@libsql/client/node', 'libsql', '@resvg/resvg-wasm'],
-      // 强制把当前平台已安装的原生包打进函数包（路径为真实存在的 node_modules 路径，
-      // 见上方 libsqlNativeInclude 计算）。Vercel(Linux x64) 会带上 @libsql/linux-x64-gnu，
-      // 本地 Windows 构建带上 win32-x64-msvc；运行时 libsql 的 require(`@libsql/${target}`)
-      // 能在 bundle 的 node_modules 里解析到原生 .node。
-      traceInclude: libsqlNativeInclude,
+      // 把 libsql 整条链路 + resvg 标为 external：nft 不打包它们，运行时从函数
+      // bundle 的 node_modules 解析（Vercel 安装阶段会带原生可选依赖）。
+      external: [
+        '@libsql/client',
+        '@libsql/client/node',
+        '@libsql/client/web',
+        'libsql',
+        '@resvg/resvg-wasm',
+      ],
     },
     // ---------- SSG：摘要/聚合结果页预渲染 ----------
     prerender: {
