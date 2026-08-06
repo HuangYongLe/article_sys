@@ -9,8 +9,11 @@ import { join, relative } from 'node:path'
 // （相对项目根的 node_modules 路径），不能给裸模块名——nft 会把裸名当成相对
 // 根目录的路径去读而找不到文件。这里按当前构建平台动态挑已安装的原生包，
 // 同时兼顾“顶层 node_modules/@libsql”和“被 npm 嵌套到
-// node_modules/libsql/node_modules/@libsql”两种情况，避免本地 Windows 构建
-// 或 Vercel 不同 npm 版本下路径不匹配而报错。
+// node_modules/libsql/node_modules/@libsql”两种情况。
+// 关键点：Vercel 上常常 npm 只创建了原生包目录却未落地文件（空目录），若把这种
+// 空目录传给 traceInclude，nft 会直接报 “File .../@libsql/linux-x64-gnu does not exist”
+// 使整次构建失败。因此这里只收录“确实含 package.json”的目录；缺失的原生包由
+// scripts/ensure-libsql-native.mjs（postinstall）在 Linux 构建时强制补齐。
 const libsqlNativeCandidates = [
   join(process.cwd(), 'node_modules/@libsql'),
   join(process.cwd(), 'node_modules/libsql/node_modules/@libsql'),
@@ -20,6 +23,8 @@ const libsqlNativeInclude = libsqlNativeCandidates
   .flatMap((dir) =>
     readdirSync(dir)
       .filter((d) => /^(linux-|win32-|darwin-|freebsd-)/.test(d))
+      // 只收录真正含有 package.json 的原生包目录，跳过 Vercel 上的空目录
+      .filter((d) => existsSync(join(dir, d, 'package.json')))
       .map((d) => relative(process.cwd(), join(dir, d))),
   )
 
