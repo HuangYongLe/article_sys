@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, onBeforeUnmount, nextTick, watch } from '#imports'
 
+// 自定义 canvas 滑动拼图（不依赖任何第三方插件）。
+// 行为：父页面（login/register）在用户「点击登录/提交」时才调用 verify()，
+// 弹窗随后出现；用户拖动拼图块对齐全图、容差内判定通过，verify() 才 resolve
+// 出 { id, answer }，由父页面带着它走登录/注册接口（服务端做最终校验）。
+// 用户主动关闭弹窗则 reject({ cancelled: true })，父页面静默处理。
+
 const W = 320
 const H = 180
 const PIECE = 44
@@ -32,6 +38,9 @@ const handleLeftPx = computed(() => {
 })
 
 const toast = useToast()
+
+let resolveFn: ((v: { id: string, answer: string }) => void) | null = null
+let rejectFn: ((e: any) => void) | null = null
 
 let resizeObserver: ResizeObserver | null = null
 let dragRect: DOMRect | null = null
@@ -141,28 +150,44 @@ async function fetchChallenge() {
     render()
   }
   catch {
-    toast.add({ title: '验证组件加载失败，请刷新重试', color: 'error' })
+    id.value = ''
+    toast.add({ title: '验证组件加载失败，请重试', color: 'error' })
   }
   finally {
     loading.value = false
   }
 }
 
-function onOpen() {
-  if (verified.value) return
-  open.value = true
-  showError.value = false
-  failShake.value = false
-  fetchChallenge()
-}
-
-// 弹窗内容（canvas）在 open 变为 true 后才挂载，用 rAF 兜底确保绘制一次
+// 弹窗内容（canvas）在 open 变为 true 后才挂载，用 rAF 兜底确保绘制一次；
+// 弹窗变为关闭（点叉/ESC/点遮罩）但 verify() 尚未结算时，视为用户取消 -> reject，
+// 保证父页面的 loading 一定会被复位（nuxt/ui v4 的 UModal 不发 @close 事件）。
 watch(open, async (v) => {
   if (v) {
     await nextTick()
     requestAnimationFrame(() => render())
   }
+  else if (resolveFn) {
+    const rj = rejectFn
+    resolveFn = null
+    rejectFn = null
+    rj?.({ cancelled: true })
+  }
 })
+
+// 仅由父页面在「点击登录/提交」时调用：打开弹窗并加载题目，返回 Promise
+function verify(): Promise<{ id: string, answer: string }> {
+  return new Promise((resolve, reject) => {
+    resolveFn = resolve
+    rejectFn = reject
+    showError.value = false
+    failShake.value = false
+    verified.value = false
+    open.value = true
+    fetchChallenge().then(() => {
+      if (!id.value) open.value = false // 加载失败 -> 关闭弹窗，watch 会 reject 取消
+    })
+  })
+}
 
 function refresh() {
   showError.value = false
@@ -170,11 +195,14 @@ function refresh() {
   fetchChallenge()
 }
 
+// 父页面登录/注册失败后调用，清理一次性状态（下次 verify 会重新拉题）
 function reset() {
-  verified.value = false
+  id.value = ''
   answer.value = ''
+  showError.value = false
+  failShake.value = false
   handleFrac.value = 0
-  fetchChallenge()
+  verified.value = false
 }
 
 function clamp(v: number, min: number, max: number) {
@@ -210,10 +238,12 @@ function onWindowUp() {
   dragRect = null
   const diff = Math.abs(pieceX.value - challenge.targetX)
   if (diff <= TOLERANCE) {
-    verified.value = true
-    answer.value = String(Math.round(pieceX.value))
-    toast.add({ title: '验证通过', color: 'success' })
+    const result = { id: id.value, answer: String(Math.round(pieceX.value)) }
+    const r = resolveFn
+    resolveFn = null
+    rejectFn = null
     open.value = false
+    r?.(result)
   }
   else {
     failShake.value = true
@@ -242,76 +272,57 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
 })
 
-defineExpose({ verified, id, answer, reset })
+defineExpose({ verify, reset })
 </script>
 
 <template>
-  <div>
-    <button
-      v-if="!verified"
-      type="button"
-      class="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-default bg-elevated px-4 py-3 text-sm font-medium text-muted transition hover:border-primary hover:text-primary"
-      @click="onOpen"
-    >
-      <UIcon name="i-lucide-shield-question" class="size-4" />
-      点击完成人机验证
-    </button>
-    <div
-      v-else
-      class="flex w-full items-center justify-center gap-2 rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm font-medium text-success"
-    >
-      <UIcon name="i-lucide-circle-check-big" class="size-4" />
-      人机验证已通过
-    </div>
+  <UModal v-model:open="open" title="完成人机验证" :close="!dragging">
+    <template #body>
+      <div class="space-y-4">
+        <p class="text-sm text-muted">拖动下方滑块，将拼图块移动到缺口处完成验证。</p>
+        <div class="overflow-hidden rounded-lg border border-default">
+          <canvas
+            ref="canvasRef"
+            class="block w-full"
+            :style="{ aspectRatio: `${W} / ${H}` }"
+          />
+        </div>
 
-    <UModal v-model:open="open" title="完成人机验证" :close="!dragging">
-      <template #body>
-        <div class="space-y-4">
-          <p class="text-sm text-muted">拖动下方滑块，将拼图块移动到缺口处完成验证。</p>
-          <div class="overflow-hidden rounded-lg border border-default">
-            <canvas
-              ref="canvasRef"
-              class="block w-full"
-              :style="{ aspectRatio: `${W} / ${H}` }"
-            />
-          </div>
-
+        <div
+          ref="trackRef"
+          class="relative h-11 w-full touch-none select-none rounded-full bg-elevated"
+          :class="{ 'animate-shake': failShake }"
+          @pointerdown="pointerDown"
+        >
           <div
-            ref="trackRef"
-            class="relative h-11 w-full touch-none select-none rounded-full bg-elevated"
-            :class="{ 'animate-shake': failShake }"
-            @pointerdown="pointerDown"
+            class="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-primary/15"
+            :style="{ width: `calc(${handleLeftPx}px + ${HANDLE_W}px)` }"
+          />
+          <div
+            class="absolute top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-inverted shadow-md"
+            :class="{ 'ring-2 ring-primary/50': dragging }"
+            :style="{ left: `${handleLeftPx}px` }"
           >
-            <div
-              class="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-primary/15"
-              :style="{ width: `calc(${handleLeftPx}px + ${HANDLE_W}px)` }"
-            />
-            <div
-              class="absolute top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-inverted shadow-md"
-              :class="{ 'ring-2 ring-primary/50': dragging }"
-              :style="{ left: `${handleLeftPx}px` }"
-            >
-              <UIcon name="i-lucide-chevrons-right" class="size-5" />
-            </div>
-          </div>
-
-          <div class="flex items-center justify-between">
-            <p v-if="showError" class="text-xs text-warning">拼图未对齐，已自动更换题目</p>
-            <span v-else />
-            <UButton
-              type="button"
-              variant="ghost"
-              color="neutral"
-              size="sm"
-              icon="i-lucide-refresh-cw"
-              :loading="loading"
-              @click="refresh"
-            >
-              换一题
-            </UButton>
+            <UIcon name="i-lucide-chevrons-right" class="size-5" />
           </div>
         </div>
-      </template>
-    </UModal>
-  </div>
+
+        <div class="flex items-center justify-between">
+          <p v-if="showError" class="text-xs text-warning">拼图未对齐，已自动更换题目</p>
+          <span v-else />
+          <UButton
+            type="button"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            icon="i-lucide-refresh-cw"
+            :loading="loading"
+            @click="refresh"
+          >
+            换一题
+          </UButton>
+        </div>
+      </div>
+    </template>
+  </UModal>
 </template>

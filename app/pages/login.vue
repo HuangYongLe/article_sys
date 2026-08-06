@@ -5,7 +5,7 @@ const route = useRoute()
 const { fetch: refreshSession } = useUserSession()
 const toast = useToast()
 
-const captchaRef = ref<{ verified: boolean, id: string, answer: string, reset: () => void } | null>(null)
+const captchaRef = ref<{ verify: () => Promise<{ id: string, answer: string }>, reset: () => void } | null>(null)
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
@@ -15,18 +15,16 @@ async function submit() {
     toast.add({ title: '请输入用户名和密码', color: 'warning' })
     return
   }
-  if (!captchaRef.value?.verified) {
-    toast.add({ title: '请完成人机验证', color: 'warning' })
-    return
-  }
   loading.value = true
   try {
+    // 点击登录后才弹出人机验证，验证通过才拿到 {id, answer}
+    const cap = await captchaRef.value!.verify()
     const res = await $fetch('/api/auth/login', {
       method: 'POST',
       body: {
         ...form,
-        captchaId: captchaRef.value.id,
-        captchaAnswer: captchaRef.value.answer,
+        captchaId: cap.id,
+        captchaAnswer: cap.answer,
       },
     })
     await refreshSession()
@@ -35,6 +33,7 @@ async function submit() {
     await navigateTo(redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : fallback)
   }
   catch (err: any) {
+    if (err && err.cancelled) return // 用户主动关闭了验证窗口，不动
     captchaRef.value?.reset()
     toast.add({ title: err?.data?.message ?? '登录失败，请稍后重试', color: 'error' })
   }
@@ -77,9 +76,7 @@ async function submit() {
         />
       </UFormField>
 
-      <UFormField label="人机验证" name="captcha">
-        <SliderCaptcha ref="captchaRef" />
-      </UFormField>
+      <SliderCaptcha ref="captchaRef" />
 
       <UButton type="submit" block size="xl" :loading="loading" class="mt-1">登录</UButton>
     </form>

@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'auth', middleware: 'guest' })
 
 const toast = useToast()
-const captchaRef = ref<{ verified: boolean, id: string, answer: string, reset: () => void } | null>(null)
+const captchaRef = ref<{ verify: () => Promise<{ id: string, answer: string }>, reset: () => void } | null>(null)
 const form = reactive({ username: '', displayName: '', email: '', password: '', confirm: '' })
 const loading = ref(false)
 const registered = ref(false)
@@ -17,9 +17,6 @@ function validate(): string | null {
   if (form.password !== form.confirm) {
     return '两次输入的密码不一致'
   }
-  if (!captchaRef.value?.verified) {
-    return '请完成人机验证'
-  }
   return null
 }
 
@@ -31,6 +28,8 @@ async function submit() {
   }
   loading.value = true
   try {
+    // 点击提交后才弹出人机验证，验证通过才拿到 {id, answer}
+    const cap = await captchaRef.value!.verify()
     await $fetch('/api/auth/register', {
       method: 'POST',
       body: {
@@ -38,13 +37,14 @@ async function submit() {
         displayName: form.displayName,
         email: form.email || undefined,
         password: form.password,
-        captchaId: captchaRef.value!.id,
-        captchaAnswer: captchaRef.value!.answer,
+        captchaId: cap.id,
+        captchaAnswer: cap.answer,
       },
     })
     registered.value = true
   }
   catch (e: any) {
+    if (e && e.cancelled) return // 用户主动关闭了验证窗口，不动
     captchaRef.value?.reset()
     toast.add({ title: e?.data?.message ?? '注册失败，请稍后重试', color: 'error' })
   }
@@ -131,9 +131,7 @@ async function submit() {
         />
       </UFormField>
 
-      <UFormField label="人机验证" name="captcha">
-        <SliderCaptcha ref="captchaRef" />
-      </UFormField>
+      <SliderCaptcha ref="captchaRef" />
 
       <UButton type="submit" block size="xl" :loading="loading" class="mt-1">提交注册</UButton>
     </form>

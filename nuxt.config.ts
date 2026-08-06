@@ -18,7 +18,23 @@ export default defineNuxtConfig({
     domains: ['blob.vercel-storage.com', '*.public.blob.vercel-storage.com'],
   },
   nitro: {
-    externals: { external: ['@libsql/client', '@libsql/client/node', 'libsql', '@resvg/resvg-wasm'] },
+    externals: {
+      external: ['@libsql/client', '@libsql/client/node', 'libsql', '@resvg/resvg-wasm'],
+      // Vercel 的 nft 静态追踪追不到 @libsql / sharp 按平台动态 require 的原生二进制
+      // （代码里是 require(`@libsql/${target}`)），会导致 serverless 函数启动缺 .node
+      // → FUNCTION_INVOCATION_FAILED（所有 /api/* 含不碰库的 captcha 全 500）。
+      // 用 traceInclude 强制把这些平台原生包打进函数包；配合 package.json 的
+      // optionalDependencies，Vercel 在 Linux 构建时会先安装对应平台包再打进函数。
+      traceInclude: [
+        '@libsql/linux-x64-gnu',
+        '@libsql/linux-x64-musl',
+        '@libsql/linux-arm64-gnu',
+        '@libsql/linux-arm64-musl',
+        '@img/sharp-linux-x64',
+        '@img/sharp-linux-arm64',
+        '@resvg/resvg-wasm',
+      ],
+    },
     // ---------- SSG：摘要/聚合结果页预渲染 ----------
     prerender: {
       crawlLinks: true,

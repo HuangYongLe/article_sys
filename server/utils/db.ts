@@ -24,6 +24,16 @@ async function createClientForEnv(): Promise<Client> {
   }
 
   if (isLocalFile) {
+    // 生产但仍是 file: URL（未配置 TURSO_DATABASE_URL）时的兜底：
+    // Vercel 等 Serverless 的文件系统只读，只有 /tmp 可写，用其下的本地库让站点
+    // 至少能跑通（单实例、冷启动会重置，仅演示级）。生产请配置 TURSO_DATABASE_URL。
+    if (process.env.VERCEL) {
+      const { createClient } = await import('@libsql/client/node')
+      const client = createClient({ url: 'file:/tmp/local.db' })
+      await client.execute('PRAGMA foreign_keys = ON')
+      console.warn('[db] 使用 /tmp/local.db（Vercel 演示兜底），生产请配置 TURSO_DATABASE_URL 指向 Turso。')
+      return client
+    }
     throw new Error('[db] 生产构建不支持 file: URL，请配置 TURSO_DATABASE_URL 指向 Turso 数据库')
   }
 
