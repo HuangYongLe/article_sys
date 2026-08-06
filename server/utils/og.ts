@@ -1,4 +1,3 @@
-import { Resvg, initWasm } from '@resvg/resvg-wasm'
 import { readFileSync } from 'node:fs'
 import { createRequire, type NodeRequire } from 'node:module'
 
@@ -21,11 +20,15 @@ function getRequire(): NodeRequire {
 }
 
 let wasmReady: Promise<void> | null = null
+let resvgMod: typeof import('@resvg/resvg-wasm') | null = null
 function ensureWasm() {
   if (!wasmReady) {
     wasmReady = (async () => {
+      // 懒加载 resvg-wasm，避免顶层 import 把 wasm 绑定拖进 serverless 函数初始化，
+      // 否则整包（含不碰库的 captcha 路由）会 FUNCTION_INVOCATION_FAILED。
+      if (!resvgMod) resvgMod = await import('@resvg/resvg-wasm')
       const wasmPath = getRequire().resolve('@resvg/resvg-wasm/index_bg.wasm')
-      await initWasm(readFileSync(wasmPath))
+      await resvgMod.initWasm(readFileSync(wasmPath))
     })()
   }
   return wasmReady
@@ -107,6 +110,7 @@ export async function renderOgImageCached(key: string, opts: OgOptions, ttlMs = 
 
 export async function renderOgImage(opts: OgOptions): Promise<Buffer> {
   await ensureWasm()
+  const { Resvg } = resvgMod!
   const W = 1200
   const H = 630
   const accent = opts.accent || '#2563eb'

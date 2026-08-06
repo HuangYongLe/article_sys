@@ -1,20 +1,27 @@
 import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 // Vercel 的 nft 静态追踪追不到 @libsql 按平台动态 require 的原生二进制
 // （代码里是 require(`@libsql/${target}`)），导致 serverless 函数缺 .node。
 // 解决办法：把 @libsql/client / libsql 设为 external，nft 会把它们整包连同
 // 嵌套的原生平台包一起复制进函数 bundle 的 node_modules；同时用 traceInclude
-// 强制把顶层安装的原生包打进函数包。注意：traceInclude 必须给“真实存在的路径”
+// 强制把已安装的原生包打进函数包。注意：traceInclude 必须给“真实存在的路径”
 // （相对项目根的 node_modules 路径），不能给裸模块名——nft 会把裸名当成相对
 // 根目录的路径去读而找不到文件。这里按当前构建平台动态挑已安装的原生包，
-// 避免本地 Windows 构建时去 trace 不存在的 linux 包而报错。
-const libsqlNativeDir = join(process.cwd(), 'node_modules/@libsql')
-const libsqlNativeInclude = existsSync(libsqlNativeDir)
-  ? readdirSync(libsqlNativeDir)
+// 同时兼顾“顶层 node_modules/@libsql”和“被 npm 嵌套到
+// node_modules/libsql/node_modules/@libsql”两种情况，避免本地 Windows 构建
+// 或 Vercel 不同 npm 版本下路径不匹配而报错。
+const libsqlNativeCandidates = [
+  join(process.cwd(), 'node_modules/@libsql'),
+  join(process.cwd(), 'node_modules/libsql/node_modules/@libsql'),
+]
+const libsqlNativeInclude = libsqlNativeCandidates
+  .filter(existsSync)
+  .flatMap((dir) =>
+    readdirSync(dir)
       .filter((d) => /^(linux-|win32-|darwin-|freebsd-)/.test(d))
-      .map((d) => join('node_modules/@libsql', d))
-  : []
+      .map((d) => relative(process.cwd(), join(dir, d))),
+  )
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
