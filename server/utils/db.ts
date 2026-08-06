@@ -1,5 +1,5 @@
 import type { Client } from '@libsql/client'
-import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql'
+import type { LibSQLDatabase } from 'drizzle-orm/libsql'
 import * as schema from '../database/schema'
 
 export { schema }
@@ -49,6 +49,11 @@ export async function useDb(): Promise<LibSQLDatabase<typeof schema>> {
   if (_db) return _db
   if (_initializing) return _initializing
   _initializing = (async () => {
+    // 懒加载 drizzle-orm/libsql：避免顶层 import 把 @libsql/client 原生二进制
+    // 拉进函数初始化阶段，否则 Serverless 冷启动会因缺失 .node 而
+    // FUNCTION_INVOCATION_FAILED（所有 /api 全挂）。改成请求时按需加载，
+    // 不碰库的路由（如人机验证）就能正常初始化。
+    const { drizzle } = await import('drizzle-orm/libsql')
     _db = drizzle(await createClientForEnv(), { schema, logger: import.meta.dev })
     return _db
   })()
