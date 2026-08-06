@@ -1,3 +1,21 @@
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
+// Vercel 的 nft 静态追踪追不到 @libsql 按平台动态 require 的原生二进制
+// （代码里是 require(`@libsql/${target}`)），导致 serverless 函数缺 .node。
+// 解决办法：把 @libsql/client / libsql 设为 external，nft 会把它们整包连同
+// 嵌套的原生平台包一起复制进函数 bundle 的 node_modules；同时用 traceInclude
+// 强制把顶层安装的原生包打进函数包。注意：traceInclude 必须给“真实存在的路径”
+// （相对项目根的 node_modules 路径），不能给裸模块名——nft 会把裸名当成相对
+// 根目录的路径去读而找不到文件。这里按当前构建平台动态挑已安装的原生包，
+// 避免本地 Windows 构建时去 trace 不存在的 linux 包而报错。
+const libsqlNativeDir = join(process.cwd(), 'node_modules/@libsql')
+const libsqlNativeInclude = existsSync(libsqlNativeDir)
+  ? readdirSync(libsqlNativeDir)
+      .filter((d) => /^(linux-|win32-|darwin-|freebsd-)/.test(d))
+      .map((d) => join('node_modules/@libsql', d))
+  : []
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   modules: ['@nuxt/ui', 'nuxt-auth-utils', '@pinia/nuxt', '@vueuse/nuxt', '@nuxt/image'],
@@ -20,20 +38,11 @@ export default defineNuxtConfig({
   nitro: {
     externals: {
       external: ['@libsql/client', '@libsql/client/node', 'libsql', '@resvg/resvg-wasm'],
-      // Vercel 的 nft 静态追踪追不到 @libsql / sharp 按平台动态 require 的原生二进制
-      // （代码里是 require(`@libsql/${target}`)），会导致 serverless 函数启动缺 .node
-      // → FUNCTION_INVOCATION_FAILED（所有 /api/* 含不碰库的 captcha 全 500）。
-      // 用 traceInclude 强制把这些平台原生包打进函数包；配合 package.json 的
-      // optionalDependencies，Vercel 在 Linux 构建时会先安装对应平台包再打进函数。
-      traceInclude: [
-        '@libsql/linux-x64-gnu',
-        '@libsql/linux-x64-musl',
-        '@libsql/linux-arm64-gnu',
-        '@libsql/linux-arm64-musl',
-        '@img/sharp-linux-x64',
-        '@img/sharp-linux-arm64',
-        '@resvg/resvg-wasm',
-      ],
+      // 强制把当前平台已安装的原生包打进函数包（路径为真实存在的 node_modules 路径，
+      // 见上方 libsqlNativeInclude 计算）。Vercel(Linux x64) 会带上 @libsql/linux-x64-gnu，
+      // 本地 Windows 构建带上 win32-x64-msvc；运行时 libsql 的 require(`@libsql/${target}`)
+      // 能在 bundle 的 node_modules 里解析到原生 .node。
+      traceInclude: libsqlNativeInclude,
     },
     // ---------- SSG：摘要/聚合结果页预渲染 ----------
     prerender: {
