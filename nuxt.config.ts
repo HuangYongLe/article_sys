@@ -27,6 +27,10 @@ const libsqlNativeInclude = libsqlNativeCandidates
       // 只收录真正完整安装的原生包（含 package.json 且含 .node 二进制），
       // 跳过 Vercel 上的空目录/stub，避免 nft traceInclude 报错
       .filter((d) => {
+        // Vercel 运行在 glibc 上，libsql 只会加载 linux-x64-gnu；构建缓存里常残留损坏的
+        // musl stub（含一个游离 .node），一旦被 traceInclude 就会让 nft 报
+        // “File .../linux-x64-musl does not exist”。显式排除 musl 变体。
+        if (d.includes('musl')) return false
         const p = join(dir, d)
         return existsSync(join(p, 'package.json')) && readdirSync(p).some((f) => f.endsWith('.node'))
       })

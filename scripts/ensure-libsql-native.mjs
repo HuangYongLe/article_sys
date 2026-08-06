@@ -38,7 +38,10 @@ try {
   }
 }
 
-const targets = ['@libsql/linux-x64-gnu', '@libsql/linux-x64-musl']
+// 只强制 linux-x64-gnu：Vercel 的 Node 函数跑在 glibc 上，libsql 只会 require
+// linux-x64-gnu；musl 变体既不会被加载，缓存里又常残留损坏的 musl stub（含一个游离
+// .node），一旦被 traceInclude 就会让 nft 报 “does not exist”。故 musl 不强制、不收录。
+const targets = ['@libsql/linux-x64-gnu']
 const root = process.cwd()
 const tmp = join(root, '.libsql-native-tmp')
 mkdirSync(tmp, { recursive: true })
@@ -47,12 +50,9 @@ let installed = 0
 for (const pkg of targets) {
   const segs = pkg.split('/') // ['@libsql', 'linux-x64-gnu']
   const dest = join(root, 'node_modules', ...segs)
-  const hasBinary = existsSync(dest) && readdirSync(dest).some((f) => f.endsWith('.node'))
-  if (hasBinary) {
-    console.log(`[ensure-libsql-native] ${pkg} already present, skip`)
-    continue
-  }
-  // 强制重新下载并解包，绕过 npm "up to date" 短路（Vercel 上常只剩空目录/stub）
+  // 每次都强制重新下载并解包：不使用 “already present” 跳过——Vercel 的构建缓存常残留
+  // 损坏的原生包（目录在、但 .node 不完整），跳过会让 nft 在 buildEnd 报错。强制重解包
+  // 可保证本次构建用的一定是完整、干净的原生二进制。
   rmSync(dest, { recursive: true, force: true })
   mkdirSync(dest, { recursive: true })
   // npm pack 产出 tarball 名：@libsql/linux-x64-gnu@0.5.29 -> libsql-linux-x64-gnu-0.5.29.tgz
