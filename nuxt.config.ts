@@ -10,10 +10,11 @@ import { join, relative } from 'node:path'
 // 根目录的路径去读而找不到文件。这里按当前构建平台动态挑已安装的原生包，
 // 同时兼顾“顶层 node_modules/@libsql”和“被 npm 嵌套到
 // node_modules/libsql/node_modules/@libsql”两种情况。
-// 关键点：Vercel 上常常 npm 只创建了原生包目录却未落地文件（空目录），若把这种
-// 空目录传给 traceInclude，nft 会直接报 “File .../@libsql/linux-x64-gnu does not exist”
-// 使整次构建失败。因此这里只收录“确实含 package.json”的目录；缺失的原生包由
-// scripts/ensure-libsql-native.mjs（postinstall）在 Linux 构建时强制补齐。
+// 关键点：Vercel 上 npm 常常只创建了原生包目录却未落地 .node 文件（空目录/stub），
+// 若把这种目录传给 traceInclude，nft 会直接报 “File .../@libsql/linux-x64-gnu does
+// not exist” 使整次构建失败。因此这里只收录“确实含 package.json 且含 .node 二进制”
+// 的目录；缺失/不完整的原生包由 scripts/ensure-libsql-native.mjs（postinstall）在
+// Linux 构建时强制补齐真实文件后再被此处收录。
 const libsqlNativeCandidates = [
   join(process.cwd(), 'node_modules/@libsql'),
   join(process.cwd(), 'node_modules/libsql/node_modules/@libsql'),
@@ -23,8 +24,12 @@ const libsqlNativeInclude = libsqlNativeCandidates
   .flatMap((dir) =>
     readdirSync(dir)
       .filter((d) => /^(linux-|win32-|darwin-|freebsd-)/.test(d))
-      // 只收录真正含有 package.json 的原生包目录，跳过 Vercel 上的空目录
-      .filter((d) => existsSync(join(dir, d, 'package.json')))
+      // 只收录真正完整安装的原生包（含 package.json 且含 .node 二进制），
+      // 跳过 Vercel 上的空目录/stub，避免 nft traceInclude 报错
+      .filter((d) => {
+        const p = join(dir, d)
+        return existsSync(join(p, 'package.json')) && readdirSync(p).some((f) => f.endsWith('.node'))
+      })
       .map((d) => relative(process.cwd(), join(dir, d))),
   )
 

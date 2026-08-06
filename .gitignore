@@ -10,6 +10,8 @@ local.db*
 *.log
 .DS_Store
 .vercel
+# 构建期强制拉取 libsql 原生包时的临时 tarball 目录
+.libsql-native-tmp
 
 # 临时/敏感：curl 导出的会话 cookie 与调试文本
 *.txt
