@@ -71,11 +71,11 @@ watch(() => route.path, () => { mobileNavOpen.value = false })
               :class="isNavActive(link, route.path) ? 'bg-elevated text-primary' : ''"
               class="w-full justify-start"
             />
-          </nav>
-          <div class="p-2 border-t border-default">
-            <DashboardUserMenu />
-          </div>
-        </aside>
+        </nav>
+        <div class="p-2 border-t border-default">
+          <DashboardUserMenu inline />
+        </div>
+      </aside>
       </Transition>
     </Teleport>
 
