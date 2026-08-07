@@ -107,8 +107,8 @@ function actorName(i: AdminAuditLogItem) {
     <UCard>
       <div v-if="loading && !data" class="py-12 text-center text-muted">加载中…</div>
       <div v-else-if="!data || data.items.length === 0" class="py-12 text-center text-muted">暂无日志记录</div>
-      <div class="overflow-x-auto">
-        <table v-else class="w-full text-sm min-w-[640px]">
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-sm min-w-[640px]">
         <thead>
           <tr class="text-left text-muted border-b border-default">
             <th class="py-2 pr-3 font-medium">时间</th>
