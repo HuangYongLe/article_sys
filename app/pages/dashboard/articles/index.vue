@@ -92,7 +92,7 @@ function rowMenu(article: ArticleDTO) {
 </script>
 
 <template>
-  <div class="p-6 space-y-4 max-w-5xl mx-auto">
+  <div class="p-4 sm:p-6 space-y-4 max-w-5xl mx-auto">
     <div class="flex items-center justify-between gap-4">
       <h1 class="text-2xl font-semibold">我的文章</h1>
       <UButton to="/dashboard/articles/new" icon="i-lucide-plus">写文章</UButton>

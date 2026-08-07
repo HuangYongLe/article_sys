@@ -235,7 +235,8 @@ onMounted(load)
     <UCard>
       <div v-if="loading && !data" class="py-12 text-center text-muted">加载中…</div>
       <div v-else-if="!data || data.items.length === 0" class="py-12 text-center text-muted">暂无文章</div>
-      <table v-else class="w-full text-sm">
+      <div class="overflow-x-auto">
+        <table v-else class="w-full text-sm min-w-[760px]">
         <thead>
           <tr class="text-left text-muted border-b border-default">
             <th class="py-2 pr-2 w-8"><UCheckbox :model-value="allSelected" @update:model-value="toggleAll" /></th>
@@ -277,6 +278,7 @@ onMounted(load)
           </tr>
         </tbody>
       </table>
+      </div>
 
       <div v-if="data && data.meta.totalPages > 1" class="flex items-center justify-end gap-2 pt-4">
         <UButton size="xs" variant="soft" :disabled="page <= 1" @click="page--">上一页</UButton>

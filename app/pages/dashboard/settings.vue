@@ -100,7 +100,7 @@ async function changePassword() {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-2xl mx-auto">
+  <div class="p-4 sm:p-6 space-y-6 max-w-2xl mx-auto">
     <h1 class="text-2xl font-semibold">个人设置</h1>
 
     <UCard>

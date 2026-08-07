@@ -165,7 +165,8 @@ onMounted(load)
       <div v-else-if="!data || data.items.length === 0" class="py-12 text-center text-muted">
         暂无用户
       </div>
-      <table v-else class="w-full text-sm">
+      <div class="overflow-x-auto">
+        <table v-else class="w-full text-sm min-w-[720px]">
         <thead>
           <tr class="text-left text-muted border-b border-default">
             <th class="py-2 pr-3 font-medium">用户</th>
@@ -206,6 +207,7 @@ onMounted(load)
           </tr>
         </tbody>
       </table>
+      </div>
 
       <div v-if="data && data.meta.totalPages > 1" class="flex items-center justify-end gap-2 pt-4">
         <UButton size="xs" variant="soft" :disabled="page <= 1" @click="page--">上一页</UButton>

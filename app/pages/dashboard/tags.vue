@@ -33,7 +33,7 @@ async function remove(tag: Tag) {
 </script>
 
 <template>
-  <div class="p-6 space-y-4 max-w-2xl mx-auto">
+  <div class="p-4 sm:p-6 space-y-4 max-w-2xl mx-auto">
     <h1 class="text-2xl font-semibold">标签管理</h1>
 
     <div class="flex gap-2">

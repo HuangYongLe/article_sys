@@ -83,6 +83,6 @@ if (error.value) {
 .article-content code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
 .article-content :not(pre) > code { background: rgba(127, 127, 127, 0.18); padding: 0.15em 0.4em; border-radius: 4px; }
 .article-content blockquote { border-left: 3px solid #cbd5e1; padding-left: 1em; color: #64748b; margin: 1em 0; }
-.article-content table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+.article-content table { width: 100%; border-collapse: collapse; margin: 1em 0; display: block; overflow-x: auto; max-width: 100%; }
 .article-content th, .article-content td { border: 1px solid #e2e8f0; padding: 0.5em 0.75em; }
 </style>

@@ -22,7 +22,7 @@ const stats = computed(() => {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-4xl mx-auto">
+  <div class="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold">概览</h1>
@@ -43,7 +43,7 @@ const stats = computed(() => {
       </div>
     </div>
 
-    <div class="grid grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
       <UCard>
         <p class="text-sm text-muted">文章总数</p>
         <p class="text-3xl font-bold mt-1">{{ stats.total }}</p>

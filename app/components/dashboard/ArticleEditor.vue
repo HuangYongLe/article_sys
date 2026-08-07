@@ -7,6 +7,9 @@ const store = useEditorStore()
 const toast = useToast()
 const router = useRouter()
 
+// 移动端设置栏抽屉开关
+const settingsOpen = ref(false)
+
 // 加载文章 / 重置
 onMounted(async () => {
   if (props.articleId) {
@@ -154,15 +157,18 @@ const statusLabel = computed(() =>
 <template>
   <div class="h-screen flex flex-col">
     <!-- 顶栏 -->
-    <header class="h-14 shrink-0 border-b border-default flex items-center gap-3 px-4">
+    <header class="min-h-14 shrink-0 border-b border-default flex flex-wrap items-center gap-2 px-3 sm:px-4 sm:gap-3">
       <UButton to="/dashboard/articles" icon="i-lucide-arrow-left" variant="ghost" color="neutral" size="sm" />
       <UBadge variant="subtle" :color="store.status === 'published' ? 'success' : 'neutral'" size="sm">
         {{ statusLabel }}
       </UBadge>
       <UBadge v-if="store.visibility === 'private'" color="error" variant="subtle" size="sm">已被下架</UBadge>
-      <span v-if="store.dirty" class="text-xs text-muted">未保存</span>
+      <span v-if="store.dirty" class="hidden sm:inline text-xs text-muted">未保存</span>
 
-      <div class="ml-auto flex items-center gap-2">
+      <div class="ml-auto flex items-center gap-2 shrink-0">
+        <UButton class="lg:hidden" variant="ghost" color="neutral" size="sm" icon="i-lucide-sliders-horizontal" @click="settingsOpen = true">
+          设置
+        </UButton>
         <UButton variant="ghost" color="neutral" size="sm" :loading="store.saving" @click="save()">
           保存
         </UButton>
@@ -180,7 +186,7 @@ const statusLabel = computed(() =>
     <div class="flex-1 min-h-0 flex">
       <!-- 主编辑区 -->
       <div class="flex-1 min-w-0 overflow-y-auto">
-        <div class="max-w-3xl mx-auto px-6 py-6 space-y-4">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-4">
           <UInput
             v-model="store.title"
             placeholder="文章标题"
@@ -202,7 +208,7 @@ const statusLabel = computed(() =>
                 :editor="editor"
                 :items="toolbarItems"
                 layout="fixed"
-                class="sticky top-0 z-10 bg-default border-b border-default mb-4 pb-2"
+                class="sticky top-0 z-10 bg-default border-b border-default mb-4 pb-2 overflow-x-auto"
               />
             </UEditor>
             <template #fallback>
@@ -212,8 +218,13 @@ const statusLabel = computed(() =>
         </div>
       </div>
 
-      <!-- 侧栏设置 -->
-      <aside class="w-72 shrink-0 border-l border-default overflow-y-auto p-4 space-y-5">
+      <!-- 侧栏设置：桌面常驻；移动端抽屉 -->
+      <aside
+        class="w-72 shrink-0 border-l border-default overflow-y-auto p-4 space-y-5
+               fixed inset-y-0 right-0 z-50 bg-default transition-transform duration-200
+               lg:static lg:z-auto lg:translate-x-0"
+        :class="settingsOpen ? 'translate-x-0' : 'translate-x-full'"
+      >
         <UFormField label="Slug" help="留空则由标题自动生成">
           <UInput v-model="store.slug" placeholder="my-article" size="sm" class="w-full" />
         </UFormField>
@@ -286,7 +297,14 @@ const statusLabel = computed(() =>
           title="管理员备注"
           :description="store.moderationNote"
         />
+
+        <UButton class="lg:hidden w-full" variant="soft" color="neutral" @click="settingsOpen = false">
+          关闭设置
+        </UButton>
       </aside>
     </div>
+
+    <!-- 移动端设置抽屉遮罩 -->
+    <div v-if="settingsOpen" class="fixed inset-0 z-40 bg-black/40 lg:hidden" @click="settingsOpen = false" />
   </div>
 </template>

@@ -3,6 +3,7 @@ import { resolveNav, type Section } from '~/config/nav'
 import { useTabsStore, type TabItem } from '~/stores/tabs'
 
 const props = defineProps<{ section: Section }>()
+const emit = defineEmits<{ 'toggle-mobile-nav': [] }>()
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +40,15 @@ function closeOthers(e: MouseEvent) {
 
 <template>
   <div class="flex items-stretch gap-px overflow-x-auto border-b border-default bg-elevated/40">
+    <!-- 移动端：汉堡按钮打开侧边栏抽屉 -->
+    <button
+      type="button"
+      class="flex items-center px-2.5 text-muted transition hover:text-highlighted md:hidden shrink-0"
+      title="菜单"
+      @click="emit('toggle-mobile-nav')"
+    >
+      <UIcon name="i-lucide-menu" class="size-5" />
+    </button>
     <button
       v-for="t in tabs"
       :key="t.key"
