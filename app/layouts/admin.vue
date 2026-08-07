@@ -67,7 +67,7 @@ watch(() => route.path, () => { mobileNavOpen.value = false })
             />
           </nav>
           <div class="p-2 border-t border-default">
-            <DashboardUserMenu inline />
+            <DashboardUserMenu inline @select="mobileNavOpen = false" />
           </div>
         </aside>
       </Transition>

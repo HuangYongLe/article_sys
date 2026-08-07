@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const props = defineProps<{ inline?: boolean }>()
+const emit = defineEmits<{ select: [] }>()
 
 const config = useRuntimeConfig()
 const { user } = useUserSession()
@@ -24,6 +25,12 @@ const groups = computed<MenuEntry[][]>(() => [
     : []),
   [{ label: '退出登录', icon: 'i-lucide-log-out', color: 'error', onSelect: confirmLogout }],
 ])
+
+function onItemClick(item: MenuEntry) {
+  // 内联模式下（移动端抽屉）点击任意项先通知父级收起抽屉，避免退出确认弹窗被抽屉遮挡
+  emit('select')
+  item.onSelect?.()
+}
 </script>
 
 <template>
@@ -44,7 +51,7 @@ const groups = computed<MenuEntry[][]>(() => [
         variant="ghost"
         class="w-full justify-start"
         :to="item.to"
-        @click="item.onSelect?.()"
+        @click="onItemClick(item)"
       />
     </template>
   </div>
