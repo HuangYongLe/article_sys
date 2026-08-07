@@ -7,6 +7,7 @@ const toast = useToast()
 const profile = reactive({
   displayName: user.value?.displayName ?? '',
   bio: '',
+  avatarUrl: user.value?.avatarUrl ?? '',
 })
 const savingProfile = ref(false)
 
@@ -16,6 +17,7 @@ onMounted(async () => {
     const res = await $fetch('/api/auth/me')
     profile.displayName = res.user.displayName
     profile.bio = res.bio ?? ''
+    profile.avatarUrl = res.user.avatarUrl ?? ''
   }
   catch { /* 忽略 */ }
 })
@@ -25,7 +27,11 @@ async function saveProfile() {
   try {
     await $fetch('/api/profile', {
       method: 'PATCH',
-      body: { displayName: profile.displayName.trim(), bio: profile.bio.trim() || null },
+      body: {
+        displayName: profile.displayName.trim(),
+        bio: profile.bio.trim() || null,
+        avatarUrl: profile.avatarUrl || null,
+      },
     })
     await refreshSession()
     toast.add({ title: '资料已更新', color: 'success' })
@@ -36,6 +42,35 @@ async function saveProfile() {
   finally {
     savingProfile.value = false
   }
+}
+
+// ---------- 头像编辑 ----------
+const avatarInput = ref<HTMLInputElement | null>(null)
+const uploadingAvatar = ref(false)
+
+async function onAvatarSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // 允许重复选择同一文件
+  if (!file) return
+  uploadingAvatar.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await $fetch<{ url: string }>('/api/upload/avatar', { method: 'POST', body: fd })
+    profile.avatarUrl = res.url
+    toast.add({ title: '头像已选择，点击“保存资料”生效', color: 'success' })
+  }
+  catch (err: any) {
+    toast.add({ title: err?.data?.message ?? '上传失败', color: 'error' })
+  }
+  finally {
+    uploadingAvatar.value = false
+  }
+}
+
+function removeAvatar() {
+  profile.avatarUrl = ''
 }
 
 const pwd = reactive({ currentPassword: '', newPassword: '', confirm: '' })
@@ -73,6 +108,19 @@ async function changePassword() {
         <h2 class="font-medium">基本资料</h2>
       </template>
       <div class="space-y-4">
+        <div class="flex items-center gap-4">
+          <UAvatar :src="profile.avatarUrl || ''" :alt="profile.displayName || '头像'" size="2xl" />
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <UButton :loading="uploadingAvatar" @click="avatarInput?.click()">
+                {{ profile.avatarUrl ? '更换头像' : '上传头像' }}
+              </UButton>
+              <UButton v-if="profile.avatarUrl" variant="ghost" color="neutral" size="sm" @click="removeAvatar">移除</UButton>
+            </div>
+            <p class="text-xs text-muted">支持 JPG / PNG / WebP / GIF，不超过 2MB</p>
+          </div>
+          <input ref="avatarInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" @change="onAvatarSelected" />
+        </div>
         <UFormField label="用户名" help="用户名即公开主页地址，由管理员分配，不可修改">
           <UInput :model-value="user?.username" disabled class="w-full" />
         </UFormField>

@@ -28,7 +28,6 @@ useSeoMeta({
 // canonical 必须是 <link rel="canonical">，useSeoMeta 的 canonical 会渲染成无效的 <meta name="canonical">
 useHead(() => ({ link: [{ rel: 'canonical', href: `${config.public.siteUrl}/` }] }))
 
-const isLocalImg = (src?: string | null) => !!src && !/^https?:\/\//i.test(src)
 const PLACEHOLDER_COVER = '/placeholder-cover.svg'
 // 文章无封面图时回退到默认占位图（占位图为本地资源，走 NuxtImg 优化）
 const coverSrc = (url?: string | null) => url || PLACEHOLDER_COVER
@@ -152,8 +151,7 @@ function chipClass(active: boolean) {
         >
           <div class="flex flex-col md:flex-row">
             <NuxtLink :to="`/u/${featured.author.username}/${featured.slug}`" class="md:w-2/5 relative bg-muted block overflow-hidden">
-              <NuxtImg v-if="isLocalImg(coverSrc(featured.coverUrl))" :src="coverSrc(featured.coverUrl)" alt="" width="640" height="400" loading="lazy" decoding="async" class="w-full h-56 md:h-full object-cover group-hover:scale-105 transition duration-500" />
-              <img v-else :src="coverSrc(featured.coverUrl)" alt="" loading="lazy" decoding="async" class="w-full h-56 md:h-full object-cover group-hover:scale-105 transition duration-500" />
+              <img :src="coverSrc(featured.coverUrl)" alt="" width="640" height="400" loading="lazy" decoding="async" class="w-full h-56 md:h-full object-cover group-hover:scale-105 transition duration-500" />
             </NuxtLink>
             <div class="md:w-3/5 p-6 flex flex-col">
               <div class="flex items-center gap-2 mb-2">
@@ -186,8 +184,7 @@ function chipClass(active: boolean) {
             class="group block rounded-2xl ring-1 ring-default bg-elevated overflow-hidden hover:-translate-y-1 hover:shadow-lg hover:ring-primary/40 transition"
           >
             <NuxtLink :to="`/u/${a.author.username}/${a.slug}`" class="relative aspect-[16/9] bg-muted block overflow-hidden">
-              <NuxtImg v-if="isLocalImg(coverSrc(a.coverUrl))" :src="coverSrc(a.coverUrl)" alt="" width="480" height="270" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
-              <img v-else :src="coverSrc(a.coverUrl)" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+              <img :src="coverSrc(a.coverUrl)" alt="" width="480" height="270" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
             </NuxtLink>
             <div class="p-4">
               <div class="flex flex-wrap items-center gap-1 mb-2">

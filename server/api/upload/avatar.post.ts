@@ -9,10 +9,11 @@ const ALLOWED = new Map([
   ['image/webp', 'webp'],
   ['image/gif', 'gif'],
 ])
-const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_SIZE = 2 * 1024 * 1024 // 2MB
 
 /**
- * 封面上传：本地开发写 public/uploads/；生产走 Vercel Blob。
+ * 头像上传：本地开发写 public/uploads/；生产走 Vercel Blob（private store）。
+ * 返回同源代理路径 /api/blob/avatars/...，由代理用签名 URL 转发，访客可见。
  */
 export default defineEventHandler(async (event) => {
   const user = await requireAuthor(event)
@@ -27,13 +28,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: '仅支持 JPG / PNG / WebP / GIF' })
   }
   if (file.data.length > MAX_SIZE) {
-    throw createError({ statusCode: 400, message: '图片不能超过 5MB' })
+    throw createError({ statusCode: 400, message: '头像图片不能超过 2MB' })
   }
 
-  const filename = `covers/${user.id}/${nanoid(12)}.${ext}`
+  const filename = `avatars/${user.id}/${nanoid(12)}.${ext}`
 
   if (import.meta.dev) {
-    const dir = join(process.cwd(), 'public', 'uploads', 'covers', user.id)
+    const dir = join(process.cwd(), 'public', 'uploads', 'avatars', user.id)
     await mkdir(dir, { recursive: true })
     const name = filename.split('/').pop()!
     await writeFile(join(dir, name), file.data)
@@ -41,13 +42,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const { put } = await import('@vercel/blob')
-  const blob = await put(filename, file.data, {
-    // store 配置为 private：上传必须声明 private，否则抛
+  await put(filename, file.data, {
+    // store 为 private：上传必须声明 private，否则抛
     // "Cannot use public access on a private store"
     access: 'private',
     contentType: file.type,
   })
   // 返回同源代理路径；生产私有 blob 由 /api/blob/[...] 用签名 URL 转发，
-  // 这样封面图对访客可见，又不必把整个 store 设为 public。
+  // 这样头像对访客可见，又不必把整个 store 设为 public。
   return { url: `/api/blob/${filename}` }
 })

@@ -8,6 +8,16 @@ export const pageQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
 })
 
+// 封面/头像地址：允许公网 http(s) URL，或本站 /api/blob/ 代理路径
+// （私有 Blob store 下，上传后返回的是同源代理路径而非裸 blob URL）
+const isMediaUrl = (v?: string | null) =>
+  !v || /^https?:\/\//i.test(v) || v.startsWith('/api/blob/')
+export const mediaUrl = z
+  .string()
+  .max(1000)
+  .nullish()
+  .refine(isMediaUrl, '图片地址必须是合法 URL 或以 /api/blob/ 开头的代理路径')
+
 // ---------- 认证 ----------
 
 export const loginSchema = z.object({
@@ -49,7 +59,7 @@ export const articleUpsertSchema = z.object({
   slug: z.string().trim().toLowerCase().regex(SLUG_RE, 'slug 格式不合法').optional(),
   summary: z.string().trim().max(500).nullish(),
   content: z.string().max(200_000, '正文过长'),
-  coverUrl: z.string().url('封面必须是合法 URL').max(1000).nullish(),
+  coverUrl: mediaUrl,
   tagIds: z.array(z.string().uuid()).max(10).optional(),
 }).strict()
 
@@ -67,7 +77,7 @@ export const slugCheckSchema = z.object({
 export const profileUpdateSchema = z.object({
   displayName: z.string().trim().min(1).max(50).optional(),
   bio: z.string().trim().max(500).nullish(),
-  avatarUrl: z.string().url().max(1000).nullish(),
+  avatarUrl: mediaUrl,
 }).strict()
 
 export const tagCreateSchema = z.object({
@@ -89,7 +99,7 @@ export const adminUserUpdateSchema = z.object({
   displayName: z.string().trim().min(1).max(50).optional(),
   email: z.string().email().max(200).nullish(),
   bio: z.string().trim().max(500).nullish(),
-  avatarUrl: z.string().url().max(1000).nullish(),
+  avatarUrl: mediaUrl,
   role: z.enum(['super_admin', 'author']).optional(),
   status: z.enum(['pending', 'active', 'disabled', 'rejected']).optional(),
 }).strict()

@@ -33,8 +33,6 @@ useSeoMeta({
 // canonical 必须是 <link rel="canonical">
 useHead(() => ({ link: [{ rel: 'canonical', href: `${config.public.siteUrl}/u/${username.value}/${slug.value}` }] }))
 
-const isLocalImg = (src?: string | null) => !!src && !/^https?:\/\//i.test(src)
-
 if (error.value) {
   throw createError({ statusCode: 404, statusMessage: 'Not Found', fatal: true })
 }
@@ -42,8 +40,7 @@ if (error.value) {
 
 <template>
   <div v-if="article" class="max-w-3xl mx-auto px-4 py-10">
-    <NuxtImg v-if="article.coverUrl && isLocalImg(article.coverUrl)" :src="article.coverUrl" alt="" width="1200" height="630" loading="lazy" decoding="async" class="w-full rounded-xl mb-6 aspect-[1200/630] object-cover" />
-    <img v-else-if="article.coverUrl" :src="article.coverUrl" alt="" loading="lazy" decoding="async" class="w-full rounded-xl mb-6 aspect-[1200/630] object-cover" />
+    <img v-if="article.coverUrl" :src="article.coverUrl" alt="" width="1200" height="630" loading="lazy" decoding="async" class="w-full rounded-xl mb-6 aspect-[1200/630] object-cover" />
 
     <NuxtLink :to="`/u/${article.author.username}`" class="text-sm text-muted hover:text-primary">
       ← {{ article.author.displayName }} 的文章

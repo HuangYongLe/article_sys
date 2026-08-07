@@ -441,7 +441,7 @@
       "post": {
         "tags": ["资料与上传"],
         "summary": "上传封面图",
-        "description": "multipart/form-data 上传封面。仅支持 JPG/PNG/WebP/GIF，最大 5MB。本地开发写入 public/uploads，生产走 Vercel Blob。返回可访问 URL。",
+        "description": "multipart/form-data 上传封面。仅支持 JPG/PNG/WebP/GIF，最大 5MB。本地开发写入 public/uploads，生产走私有 Vercel Blob（access:private）。返回同源代理路径 /api/blob/covers/...（由 /api/blob 代理签发限时签名 URL 转发，访客可见）。",
         "requestBody": {
           "required": true,
           "content": {
@@ -457,7 +457,34 @@
         "responses": {
           "200": {
             "description": "上传成功",
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string", "example": "/uploads/covers/<userId>/<nanoid>.webp" } } } } }
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string", "example": "/api/blob/covers/<userId>/<nanoid>.webp" } } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/upload/avatar": {
+      "post": {
+        "tags": ["资料与上传"],
+        "summary": "上传头像",
+        "description": "multipart/form-data 上传头像。仅支持 JPG/PNG/WebP/GIF，最大 2MB。本地开发写入 public/uploads，生产走私有 Vercel Blob（access:private）。返回同源代理路径 /api/blob/avatars/...（由 /api/blob 代理签发限时签名 URL 转发，访客可见）。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": { "file": { "type": "string", "format": "binary", "description": "图片文件" } },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string", "example": "/api/blob/avatars/<userId>/<nanoid>.png" } } } } }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" }
@@ -1050,7 +1077,7 @@
         "properties": {
           "displayName": { "type": "string", "minLength": 1, "maxLength": 50 },
           "bio": { "type": "string", "maxLength": 500, "nullable": true },
-          "avatarUrl": { "type": "string", "format": "uri", "maxLength": 1000, "nullable": true }
+          "avatarUrl": { "type": "string", "maxLength": 1000, "nullable": true, "description": "头像地址：公网 http(s) URL 或本站 /api/blob/avatars/... 代理路径（私有 Blob store）" }
         }
       },
       "TagCreateRequest": {

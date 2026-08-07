@@ -35,8 +35,6 @@ useSeoMeta({
 // canonical 必须是 <link rel="canonical">
 useHead(() => ({ link: [{ rel: 'canonical', href: `${config.public.siteUrl}/u/${username.value}` }] }))
 
-const isLocalImg = (src?: string | null) => !!src && !/^https?:\/\//i.test(src)
-
 if (error.value) {
   throw createError({ statusCode: 404, statusMessage: 'Not Found', fatal: true })
 }
@@ -97,8 +95,7 @@ if (error.value) {
         >
           <NuxtLink :to="`/u/${author.username}/${a.slug}`" class="block">
             <div class="flex gap-4 p-4">
-              <NuxtImg v-if="a.coverUrl && isLocalImg(a.coverUrl)" :src="a.coverUrl" alt="" width="120" height="80" loading="lazy" decoding="async" class="w-28 h-20 rounded-lg object-cover shrink-0" />
-              <img v-else-if="a.coverUrl" :src="a.coverUrl" alt="" loading="lazy" decoding="async" class="w-28 h-20 rounded-lg object-cover shrink-0" />
+              <img v-if="a.coverUrl" :src="a.coverUrl" alt="" width="120" height="80" loading="lazy" decoding="async" class="w-28 h-20 rounded-lg object-cover shrink-0" />
               <div v-else class="w-28 h-20 rounded-lg bg-muted shrink-0 flex items-center justify-center text-dimmed">
                 <UIcon name="i-lucide-file-text" class="size-6" />
               </div>
