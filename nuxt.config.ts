@@ -38,10 +38,12 @@ export default defineNuxtConfig({
         '@resvg/resvg-wasm',
       ],
     },
-    // ---------- SSG：摘要/聚合结果页预渲染 ----------
+    // 关闭 SSG 预渲染：公开页改为请求时按需 SSR，保证新发布文章即时出现在
+    // 首页 / 作者文章列表。文章详情页 SEO 同样由 SSR 返回完整 HTML 保证，无需静态化。
+    // （此前 prerender 会让首页冻结在部署时快照，导致发布后首页不刷新。）
     prerender: {
-      crawlLinks: true,
-      routes: ['/'],
+      crawlLinks: false,
+      routes: [],
     },
   },
   vite: {
@@ -58,9 +60,8 @@ export default defineNuxtConfig({
   routeRules: {
     '/dashboard/**': { ssr: false },
     '/admin/**': { ssr: false },
-    // 公开聚合/摘要页与作者/文章详情页：静态预渲染（SSG）
-    '/': { prerender: true },
-    '/u/**': { prerender: true },
+    // 公开页（首页 / 作者文章列表 / 文章详情）改为按需 SSR，新文章即时可见。
+    // 不再预渲染，避免首页冻结在部署时的快照。SSR 仍返回完整 HTML，不影响 SEO。
   },
   app: {
     head: {
