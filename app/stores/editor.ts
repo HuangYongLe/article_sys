@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { nextTick } from 'vue'
 import type { ArticleDTO } from '#shared/types'
 
 interface EditorState {
@@ -15,6 +16,8 @@ interface EditorState {
   loading: boolean
   saving: boolean
   dirty: boolean
+  /** 正在写入服务端返回的数据（load/save），期间不标脏 */
+  applying: boolean
 }
 
 function emptyState(): EditorState {
@@ -32,6 +35,7 @@ function emptyState(): EditorState {
     loading: false,
     saving: false,
     dirty: false,
+    applying: false,
   }
 }
 
@@ -44,6 +48,7 @@ export const useEditorStore = defineStore('editor', {
     },
 
     applyDTO(dto: ArticleDTO) {
+      this.applying = true
       this.id = dto.id
       this.title = dto.title
       this.slug = dto.slug
@@ -55,6 +60,8 @@ export const useEditorStore = defineStore('editor', {
       this.visibility = dto.visibility
       this.moderationNote = dto.moderationNote
       this.dirty = false
+      // 等本次赋值触发的响应式更新（含标脏 watch）冲刷完成后再解除屏蔽
+      nextTick(() => { this.applying = false })
     },
 
     async load(id: string) {

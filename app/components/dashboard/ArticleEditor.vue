@@ -24,8 +24,9 @@ onMounted(async () => {
 })
 onUnmounted(() => store.reset())
 
-// 内容变更标脏
+// 内容变更标脏（applyDTO 写入服务端返回时不标脏）
 watch(() => [store.title, store.content, store.summary, store.slug, store.coverUrl, store.tagIds], () => {
+  if (store.applying) return
   store.dirty = true
 }, { deep: true })
 
