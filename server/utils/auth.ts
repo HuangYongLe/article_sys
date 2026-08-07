@@ -1,6 +1,8 @@
 import type { H3Event } from 'h3'
+import { getHeader } from 'h3'
 import { and, eq } from 'drizzle-orm'
 import { useDb, schema } from './db'
+import { verifyToken } from './token'
 import type { User } from '../database/schema'
 
 export type SessionUser = {
@@ -27,10 +29,28 @@ export function toSessionUser(u: User): SessionUser {
 }
 
 /**
- * 校验会话并回源 DB 复核（status=active 且 tokenVersion 一致）。
- * 任何一步不满足即 401，并顺手清掉无效会话。
+ * 校验登录态并回源 DB 复核（status=active 且 tokenVersion 一致）。
+ * 支持两种凭证，按优先级：
+ *   1) Authorization: Bearer <token> —— 小程序 / 移动端 / API 客户端
+ *   2) Cookie 会话（nuxt-auth-utils 加密 Cookie）—— Web 前端
+ * 任何一步不满足即 401，Cookie 场景顺手清掉无效会话。
  */
 export async function getCurrentUser(event: H3Event): Promise<User> {
+  // 1) Bearer Token（移动端优先）
+  const authHeader = getHeader(event, 'authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    const claims = verifyToken(authHeader.slice(7).trim())
+    const db = await useDb()
+    if (claims) {
+      const user = await db.query.users.findFirst({ where: eq(schema.users.id, claims.sub) })
+      if (user && user.status === 'active' && user.tokenVersion === claims.v) {
+        return user
+      }
+    }
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized', message: '登录状态已失效，请重新登录' })
+  }
+
+  // 2) Cookie 会话（Web）
   const session = await requireUserSession(event)
   const sessionUser = session.user as SessionUser
 

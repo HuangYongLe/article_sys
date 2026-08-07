@@ -12,6 +12,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     tursoDatabaseUrl: process.env.TURSO_DATABASE_URL || 'file:./local.db',
     tursoAuthToken: process.env.TURSO_AUTH_TOKEN || '',
+    // Bearer Token 签名密钥：优先 AUTH_TOKEN_SECRET，否则复用会话密码（NUXT_SESSION_PASSWORD）
+    authTokenSecret: process.env.AUTH_TOKEN_SECRET || '',
     public: {
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000',
       siteName: process.env.NUXT_PUBLIC_SITE_NAME || '文章发布平台',

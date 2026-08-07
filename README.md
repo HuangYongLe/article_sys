@@ -4,7 +4,8 @@
 
 ## 功能特性
 
-- **认证与权限**：注册 → 超管审核 → 登录；基于 cookie 的会话（`nuxt-auth-utils`）。角色含 `super_admin` / 普通用户。
+- **认证与权限**：注册 → 超管审核 → 登录。Web 端基于 Cookie 会话（`nuxt-auth-utils`）；**同时为小程序 / 移动端提供无状态 Bearer Token**（登录接口返回 `token`，请求头携带 `Authorization: Bearer <token>`）。两种凭证复用同一套鉴权逻辑，改密即可令所有旧 token / 会话失效。角色含 `super_admin` / 普通用户。
+- **API 文档**：内置可交互 Swagger 文档（`/docs/swagger.html`，基于 OpenAPI 3.0 规范 `public/docs/openapi.json`）。
 - **文章管理**：Markdown 编辑器、标签、封面图、发布/草稿状态。
 - **公开页**：首页文章聚合流、作者主页 `/u/[username]`、文章详情 `/u/[username]/[slug]`、标签云，全部支持静态预渲染（SSG）。
 - **中控平台**：用户管理、文章治理、审计日志（`/admin`）。
@@ -124,6 +125,7 @@ npm run preview    # 预览生产构建
 | 变量                      | 必填   | 默认值                     | 说明                                                                   |
 | ----------------------- | ---- | ----------------------- | -------------------------------------------------------------------- |
 | `NUXT_SESSION_PASSWORD` | 生产必填 | 空                       | 会话加密密钥，>= 32 字符。生成：`openssl rand -base64 32`。**生产环境缺失会导致会话功能异常。**    |
+| `AUTH_TOKEN_SECRET`     | 建议   | 空                       | 移动端 Bearer Token 的 HMAC 签名密钥。缺省时**复用** `NUXT_SESSION_PASSWORD`。建议为移动端单独配置一个 >= 32 字符的值，与 Cookie 密钥隔离。 |
 | `TURSO_DATABASE_URL`    | 是    | `file:./local.db`       | 本地开发用 `file:./local.db`；生产填 Turso 地址 `libsql://<db>-<org>.turso.io`。 |
 | `TURSO_AUTH_TOKEN`      | 远程必填 | 空                       | Turso 访问令牌：`turso db tokens create <db-name>`。本地 `file:` 可留空。        |
 | `BLOB_READ_WRITE_TOKEN` | 可选   | 空                       | Vercel Blob 图片上传令牌；缺失时文章封面降级为「填写图片 URL」。                             |
@@ -131,6 +133,46 @@ npm run preview    # 预览生产构建
 | `NUXT_PUBLIC_SITE_NAME` | 否    | `文章发布平台`                | 站点名称，用于标题、品牌展示等。                                                     |
 
 > 以 `NUXT_PUBLIC_` 开头的变量会暴露到客户端（用于 SEO/OG 等）。
+
+---
+
+## API 文档与移动端接入
+
+平台对外暴露统一的 REST API，既服务于 Web 前端，也面向小程序 / 移动端 / 第三方客户端。
+
+### 鉴权方式（双端并存）
+
+| 客户端        | 凭证                                 | 使用方式                                                                 |
+| ---------- | ---------------------------------- | -------------------------------------------------------------------- |
+| Web 前端     | Cookie 会话（`auth.session`）            | 登录成功后由服务端写入 httpOnly Cookie，浏览器自动携带，无需手动处理。                          |
+| 小程序 / 移动端 | Bearer Token（无状态 HMAC 签名）            | 登录接口返回 `token`，客户端本地保存，后续每个请求在请求头携带 `Authorization: Bearer <token>`。 |
+
+- Token 格式：`base64url(payload).signature`，payload 含 `sub`(用户 id)、`v`(tokenVersion)、`exp`(过期时间)，**默认有效期 7 天**。
+- **无状态、服务端不落地**；失效机制复用 DB 中已有的 `tokenVersion` 字段——调用「修改密码」会使 `tokenVersion + 1`，所有先前下发的旧 token / 会话立即失效，登录接口会重新下发新 token。
+- 登出：Web 端清除 Cookie 即可；移动端为无状态 token，本地丢弃 token 即可，需全员下线可走「修改密码」。
+- 所有受保护接口（文章 / 标签 / 资料 / 上传 / 中控台）均**同时支持**两种凭证，无需区分路径。
+
+### 小程序 / 移动端对接示例
+
+```
+1) POST /api/auth/login
+   请求体: { username, password, captchaId, captchaAnswer }
+   响应:   { ok: true, token: "<jwt-like>", expiresIn: 604800, user: {...} }
+
+2) 之后每个请求头:
+   Authorization: Bearer <上面拿到的 token>
+
+3) 取当前用户:
+   GET /api/auth/me   （带上面请求头 → 200 返回 user）
+```
+
+### Swagger 文档（可交互）
+
+启动应用后访问 **`/docs/swagger.html`** 即可查看完整、可交互的 API 文档（基于 `public/docs/openapi.json`，符合 OpenAPI 3.0）。
+
+- 因为文档与 API 同源，已登录的会话 Cookie 会自动带上，可直接在页面里调试需要登录的接口。
+- `openapi.json` 也可单独导入 Postman / Insomnia / Redoc / Swagger Editor。
+- 该规范为**手写维护文档**：服务端的路由或校验规则有变动时，需同步更新 `public/docs/openapi.json`（未接入自动生成，以避免离线构建风险与自动推导导致的 schema 信息丢失）。
 
 ---
 
@@ -144,6 +186,7 @@ npm run preview    # 预览生产构建
 2. **Node 版本**：在项目 `Settings → Build & Development` 中将 Node.js Version 设为 **22.x**（项目 `engines` 已声明，Vercel 通常会自动识别）。
 3. **配置环境变量**（`Settings → Environment Variables`），至少包含：
    - `NUXT_SESSION_PASSWORD`（生产值）
+   - `AUTH_TOKEN_SECRET`（移动端 Token 签名密钥，建议与上面的 Cookie 密钥不同）
    - `TURSO_DATABASE_URL`（你的 Turso 地址）
    - `TURSO_AUTH_TOKEN`
    - `NUXT_PUBLIC_SITE_URL`（改为你的生产域名，如 `https://your-app.vercel.app`）

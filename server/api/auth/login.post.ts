@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { loginSchema } from '#shared/utils/validators'
 import { useDb, schema } from '../../utils/db'
 import { toSessionUser } from '../../utils/auth'
+import { issueToken } from '../../utils/token'
 import { logAudit } from '../../utils/audit'
 import { verifyCaptcha } from '../../utils/captcha'
 
@@ -73,5 +74,8 @@ export default defineEventHandler(async (event) => {
   })
   await logAudit({ actorId: user.id, action: 'auth.login', targetType: 'user', targetId: user.id })
 
-  return { ok: true, user: toSessionUser(user) }
+  // 同时签发 Bearer Token，供小程序 / 移动端在 Authorization 头携带（Web 可忽略）
+  const { token, expiresIn } = issueToken(user)
+
+  return { ok: true, user: toSessionUser(user), token, expiresIn }
 })

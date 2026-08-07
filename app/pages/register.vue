@@ -133,7 +133,7 @@ async function submit() {
 
       <SliderCaptcha ref="captchaRef" />
 
-      <UButton type="submit" block size="xl" :loading="loading" class="mt-1">提交注册</UButton>
+      <UButton type="submit" block size="xl" :loading="loading" class="mt-8">提交注册</UButton>
     </form>
 
     <p v-if="!registered" class="mt-8 text-center text-sm text-muted">

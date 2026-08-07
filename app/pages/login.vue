@@ -78,7 +78,7 @@ async function submit() {
 
       <SliderCaptcha ref="captchaRef" />
 
-      <UButton type="submit" block size="xl" :loading="loading" class="mt-1">登录</UButton>
+      <UButton type="submit" block size="xl" :loading="loading" class="mt-8">登录</UButton>
     </form>
 
     <p class="mt-8 text-center text-sm text-muted">

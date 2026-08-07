@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { changePasswordSchema } from '#shared/utils/validators'
 import { useDb, schema } from '../../utils/db'
 import { getCurrentUser, toSessionUser } from '../../utils/auth'
+import { issueToken } from '../../utils/token'
 import { logAudit } from '../../utils/audit'
 
 export default defineEventHandler(async (event) => {
@@ -33,5 +34,8 @@ export default defineEventHandler(async (event) => {
   await setUserSession(event, { user: toSessionUser(updated!) })
   await logAudit({ actorId: user.id, action: 'auth.change_password', targetType: 'user', targetId: user.id })
 
-  return { ok: true }
+  // tokenVersion 已递增，旧 Token 已失效，需为移动端重新签发
+  const { token, expiresIn } = issueToken(updated!)
+
+  return { ok: true, token, expiresIn }
 })

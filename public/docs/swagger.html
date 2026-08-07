@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文章发布平台 API · Swagger 文档</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .topbar { background: #0f172a; color: #e2e8f0; padding: 14px 22px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+    .topbar h1 { font-size: 17px; margin: 0; font-weight: 600; }
+    .topbar .sub { font-size: 13px; color: #94a3b8; }
+    .topbar code { background: #1e293b; padding: 2px 6px; border-radius: 4px; color: #7dd3fc; }
+    #swagger-ui { padding: 0 12px; }
+    .err { margin: 24px; padding: 16px 18px; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 8px; color: #991b1b; }
+    .err code { background: #fee2e2; padding: 1px 5px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>文章发布平台 API</h1>
+    <span class="sub">Swagger / OpenAPI 3.0 · 规范文件 <code>./openapi.json</code></span>
+    <span class="sub">鉴权：登录后自动携带会话 Cookie（无需手动填 token）</span>
+  </div>
+  <div id="swagger-ui"></div>
+  <div id="load-error" class="err" style="display:none">
+    无法加载 <code>./openapi.json</code>。若你是直接双击打开本文件，请改用本地静态服务器访问，例如在本目录执行
+    <code>npx serve</code> 或 <code>python3 -m http.server</code>，再打开对应的 <code>/swagger.html</code>；
+    或在 Nuxt 项目内 <code>npm run dev</code> 后访问 <code>/docs/swagger.html</code>。
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    async function loadSpec() {
+      let spec;
+      try {
+        const res = await fetch('./openapi.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        spec = await res.json();
+      } catch (e) {
+        document.getElementById('load-error').style.display = 'block';
+        return;
+      }
+      window.ui = SwaggerUIBundle({
+        spec: spec,
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis],
+        layout: 'BaseLayout',
+        withCredentials: true,
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 2,
+      });
+    }
+    loadSpec();
+  </script>
+</body>
+</html>

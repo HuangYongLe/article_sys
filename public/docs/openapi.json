@@ -1,0 +1,1088 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "文章发布平台 API",
+    "version": "1.0.0",
+    "description": "Nuxt 4 + Nitro 文章发布平台的 REST API 说明文档。\n\n**鉴权方式（两种并存）**：\n1. **Cookie 会话（Web 前端）**：调用 `POST /api/auth/login` 成功后，服务端写入 httpOnly 会话 Cookie，后续需登录的接口自动携带即可。\n2. **Bearer Token（小程序 / 移动端 / API 客户端）**：同一登录接口除 Cookie 外还会在响应中返回 `token` 与 `expiresIn`。客户端自行保存 token，并在后续请求头携带 `Authorization: Bearer <token>`。token 为 HMAC 签名、含用户 id 与 `tokenVersion`，服务器验签后复核；改密或强制下线会使旧 token 立即失效。\n\n**错误处理**：除 200 外的错误响应均为 `{ statusCode, statusMessage?, message, data? }` 结构，见 #/components/schemas/ErrorResponse。\n\n**公共约定**：所有时间戳字段为 Unix 毫秒时间戳（number）；分页接口统一返回 `{ items, meta: { page, pageSize, total, totalPages } }`。",
+    "contact": { "name": "article_sys" }
+  },
+  "servers": [
+    { "url": "http://localhost:3000", "description": "本地开发环境 (npm run dev)" },
+    { "url": "https://www.tooi.top", "description": "生产环境 (Vercel)" }
+  ],
+  "tags": [
+    { "name": "认证", "description": "人机验证、登录、注册、会话、改密、初始化" },
+    { "name": "文章", "description": "作者对自己文章的增删改查、发布状态、slug 校验" },
+    { "name": "标签", "description": "作者个人标签管理" },
+    { "name": "资料与上传", "description": "个人资料更新、封面上传" },
+    { "name": "中控台-用户", "description": "超级管理员对用户进行审核与启用/禁用" },
+    { "name": "中控台-文章", "description": "超级管理员对文章进行治理、批量操作与审核" },
+    { "name": "中控台-审计", "description": "超级管理员查看审计日志" },
+    { "name": "公开页", "description": "无需登录的聚合页、标签云、作者页与文章详情" },
+    { "name": "系统", "description": "健康检查与一次性初始化" }
+  ],
+  "security": [{ "session": [] }, { "bearerAuth": [] }],
+  "paths": {
+    "/api/_health": {
+      "get": {
+        "tags": ["系统"],
+        "summary": "健康检查",
+        "description": "探测服务与数据库连接状态。无需登录。",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "服务正常",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "dbTime": { "type": "string", "nullable": true, "example": "2026-08-07 01:23:45" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/captcha": {
+      "get": {
+        "tags": ["认证"],
+        "summary": "获取滑块拼图人机验证挑战",
+        "description": "生成滑块拼图几何参数，正确位置（targetX）写入 httpOnly Cookie（cm_captcha，5 分钟有效）。前端用 id + 几何参数绘制拼图，用户拖动后把滑块 x 坐标作为 captchaAnswer 回传。无需登录。",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "挑战参数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "description": "挑战 ID，提交时作为 captchaId" },
+                    "targetX": { "type": "number", "description": "缺口正确 x 坐标" },
+                    "y": { "type": "number", "description": "缺口 y 坐标" },
+                    "width": { "type": "number" },
+                    "height": { "type": "number" },
+                    "pieceSize": { "type": "number", "description": "拼图块尺寸" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "登录",
+        "description": "校验人机验证 + 账号密码。成功写入会话 Cookie 并返回会话用户；同时为移动端返回 `token` 与 `expiresIn`，客户端可保存后用 `Authorization: Bearer <token>` 调用需登录接口。失败不区分「用户不存在 / 密码错误」。连续 5 次失败锁定 10 分钟。账号非 active（pending/rejected/disabled）将被拒绝。无需登录。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "user": { "$ref": "#/components/schemas/SessionUser" },
+                    "token": { "type": "string", "description": "Bearer Token，移动端/小程序在后续请求头 `Authorization: Bearer <token>` 携带", "example": "eyJzdWIiOiIxMjMifQ.xxxxx" },
+                    "expiresIn": { "type": "integer", "description": "token 有效期（秒），默认 604800（7 天）", "example": 604800 }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "自助注册",
+        "description": "创建普通作者账号，默认进入 pending（待超管审核）。需人机验证。用户名/邮箱唯一。无需登录。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功，等待审核",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "status": { "type": "string", "example": "pending" },
+                    "message": { "type": "string", "example": "注册成功，等待管理员审核通过后方可登录" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["认证"],
+        "summary": "获取当前登录用户",
+        "description": "回源数据库刷新会话（角色/状态变化后用于同步），返回会话用户及其 bio、email。",
+        "responses": {
+          "200": {
+            "description": "当前用户",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": { "$ref": "#/components/schemas/SessionUser" },
+                    "bio": { "type": "string", "nullable": true },
+                    "email": { "type": "string", "nullable": true }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "登出",
+        "description": "清除会话 Cookie（Web 前端）。移动端为无状态 Token，登出时客户端本地丢弃 token 即可；如需让所有设备（含移动端）强制下线，可调用「修改密码」使 tokenVersion 递增从而令旧 token 失效。",
+        "responses": {
+          "200": {
+            "description": "已登出",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true } } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "修改密码",
+        "description": "校验当前密码后更新。会使其他设备的旧会话失效（tokenVersion + 1），当前设备保持登录。移动端的旧 token 会因 tokenVersion 递增而失效，故本接口会重新下发新 token。",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangePasswordRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "修改成功，重新下发 token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "token": { "type": "string", "description": "改密后重新签发的 Bearer Token（旧 token 已失效）", "example": "eyJzdWIiOiIxMjMifQ.yyyyy" },
+                    "expiresIn": { "type": "integer", "description": "新 token 有效期（秒）", "example": 604800 }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/_setup/bootstrap": {
+      "post": {
+        "tags": ["系统", "认证"],
+        "summary": "一次性初始化首个超级管理员",
+        "description": "仅当 users 表为空时可调用，创建首个超级管理员并建立会话。之后永久返回 410。无需登录。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BootstrapRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "初始化成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "user": { "$ref": "#/components/schemas/SessionUser" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "410": {
+            "description": "系统已初始化",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/articles": {
+      "get": {
+        "tags": ["文章"],
+        "summary": "我的文章列表",
+        "description": "返回当前作者本人的文章（分页 + 状态筛选 + 搜索），并附带各状态计数。",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "name": "status", "in": "query", "required": false, "schema": { "type": "string", "enum": ["draft", "published", "archived"] }, "description": "按状态筛选" },
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "搜索标题/摘要" }
+        ],
+        "responses": {
+          "200": {
+            "description": "我的文章列表",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MyArticleListResult" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["文章"],
+        "summary": "创建文章",
+        "description": "创建新文章。slug 可选（缺省由标题生成，冲突自动加后缀）；tagIds 必须属于当前作者。正文经 Markdown 渲染为 contentHtml。",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArticleUpsertRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArticleDTO" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/articles/slug-check": {
+      "get": {
+        "tags": ["文章"],
+        "summary": "校验 slug 是否可用",
+        "description": "检查当前作者是否已有该 slug（编辑时可用 excludeId 排除自身）。",
+        "parameters": [
+          { "name": "slug", "in": "query", "required": true, "schema": { "type": "string" }, "description": "要校验的 slug（仅小写字母、数字、连字符）" },
+          { "name": "excludeId", "in": "query", "required": false, "schema": { "type": "string", "format": "uuid" }, "description": "编辑场景下排除的文章 ID" }
+        ],
+        "responses": {
+          "200": {
+            "description": "可用性结果",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "available": { "type": "boolean", "description": "true=可用" } } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/articles/{id}": {
+      "get": {
+        "tags": ["文章"],
+        "summary": "文章详情（作者视角）",
+        "description": "返回文章完整 DTO（含 content 原文与 tagIds）。仅作者本人或超管可访问。",
+        "parameters": [{ "$ref": "#/components/parameters/ArticleId" }],
+        "responses": {
+          "200": { "description": "文章详情", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArticleDTO" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "tags": ["文章"],
+        "summary": "更新文章",
+        "description": "部分更新文章字段。修改 slug 时校验冲突；content 变更会重新渲染 contentHtml 并刷新字数；tagIds 为整体替换（必须属于当前作者）。",
+        "parameters": [{ "$ref": "#/components/parameters/ArticleId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ArticleUpsertRequest" },
+              "description": "所有字段均可选（partial）"
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "更新成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArticleDTO" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "delete": {
+        "tags": ["文章"],
+        "summary": "删除文章",
+        "description": "删除文章及其标签关联。仅作者本人或超管可操作。",
+        "parameters": [{ "$ref": "#/components/parameters/ArticleId" }],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/articles/{id}/status": {
+      "post": {
+        "tags": ["文章"],
+        "summary": "变更文章状态（发布/取消发布/归档）",
+        "description": "作者只能改 status，visibility 归超管管。publish 时若从未发布则写入 publishedAt。",
+        "parameters": [{ "$ref": "#/components/parameters/ArticleId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArticleStatusRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "状态已更新", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArticleDTO" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "tags": ["标签"],
+        "summary": "我的标签列表",
+        "description": "返回当前作者的全部标签（按名称升序）。",
+        "responses": {
+          "200": {
+            "description": "标签列表",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Tag" } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["标签"],
+        "summary": "创建标签",
+        "description": "创建标签（同名同 slug 幂等，直接返回已有标签）。slug 由名称生成。",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TagCreateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "创建成功（或返回已有标签）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Tag" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/tags/{id}": {
+      "delete": {
+        "tags": ["标签"],
+        "summary": "删除标签",
+        "description": "删除当前作者拥有的标签（同时解除文章绑定）。",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "标签 ID" }],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/profile": {
+      "patch": {
+        "tags": ["资料与上传"],
+        "summary": "更新个人资料",
+        "description": "更新当前用户的 displayName / bio / avatarUrl，并刷新会话。",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProfileUpdateRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true } } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/upload/cover": {
+      "post": {
+        "tags": ["资料与上传"],
+        "summary": "上传封面图",
+        "description": "multipart/form-data 上传封面。仅支持 JPG/PNG/WebP/GIF，最大 5MB。本地开发写入 public/uploads，生产走 Vercel Blob。返回可访问 URL。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": { "file": { "type": "string", "format": "binary", "description": "图片文件" } },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string", "example": "/uploads/covers/<userId>/<nanoid>.webp" } } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": ["中控台-用户"],
+        "summary": "用户列表",
+        "description": "超级管理员分页查询用户，支持 status/role 筛选与关键字搜索，返回各状态计数与不受 status 影响的 grandTotal。",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "name": "status", "in": "query", "required": false, "schema": { "type": "string", "enum": ["pending", "active", "disabled", "rejected", "all"] }, "description": "按状态筛选，默认 all" },
+          { "name": "role", "in": "query", "required": false, "schema": { "type": "string", "enum": ["super_admin", "author"] }, "description": "按角色筛选" },
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "搜索用户名/显示名/邮箱" }
+        ],
+        "responses": {
+          "200": { "description": "用户列表", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminUserListResult" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/users/{id}/approve": {
+      "post": {
+        "tags": ["中控台-用户"],
+        "summary": "审核通过用户",
+        "description": "将 pending 用户置为 active 并记录审核人。仅超管可操作。",
+        "parameters": [{ "$ref": "#/components/parameters/UserId" }],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true }, "status": { "type": "string", "example": "active" } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/users/{id}/reject": {
+      "post": {
+        "tags": ["中控台-用户"],
+        "summary": "拒绝用户",
+        "description": "将用户置为 rejected 并记录拒绝原因。仅超管可操作。",
+        "parameters": [{ "$ref": "#/components/parameters/UserId" }],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RejectRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true }, "status": { "type": "string", "example": "rejected" } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/users/{id}/disable": {
+      "post": {
+        "tags": ["中控台-用户"],
+        "summary": "禁用用户",
+        "description": "将用户置为 disabled。仅超管可操作。",
+        "parameters": [{ "$ref": "#/components/parameters/UserId" }],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true }, "status": { "type": "string", "example": "disabled" } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/users/{id}/enable": {
+      "post": {
+        "tags": ["中控台-用户"],
+        "summary": "启用用户",
+        "description": "将 disabled/rejected 用户恢复为 active 并记录审核人。仅超管可操作。",
+        "parameters": [{ "$ref": "#/components/parameters/UserId" }],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true }, "status": { "type": "string", "example": "active" } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/articles": {
+      "get": {
+        "tags": ["中控台-文章"],
+        "summary": "文章治理列表",
+        "description": "超级管理员分页查询全部文章，支持 status/visibility/author/q 筛选，返回各状态计数与 grandTotal。",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "name": "status", "in": "query", "required": false, "schema": { "type": "string", "enum": ["draft", "published", "archived"] }, "description": "按状态筛选" },
+          { "name": "visibility", "in": "query", "required": false, "schema": { "type": "string", "enum": ["public", "private"] }, "description": "按可见性筛选" },
+          { "name": "author", "in": "query", "required": false, "schema": { "type": "string" }, "description": "按作者用户名筛选" },
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "搜索标题/摘要" }
+        ],
+        "responses": {
+          "200": { "description": "文章治理列表", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminArticleListResult" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/articles/bulk": {
+      "post": {
+        "tags": ["中控台-文章"],
+        "summary": "批量操作文章",
+        "description": "对一批文章执行 hide（转 private）/ show（转 public）/ delete。仅超管可操作。",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminBulkRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true }, "count": { "type": "integer", "example": 3 } } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/articles/{id}/moderate": {
+      "post": {
+        "tags": ["中控台-文章"],
+        "summary": "审核单篇文章",
+        "description": "超级管理员修改文章 status / visibility / 审核备注（至少指定一项）。仅超管可操作。",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "文章 ID" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminArticleModerateRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "审核成功",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean", "example": true } } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/audit-logs": {
+      "get": {
+        "tags": ["中控台-审计"],
+        "summary": "审计日志列表",
+        "description": "超级管理员分页查询审计日志，支持 action / targetType / actor（用户名或 ID）/ 关键字筛选。",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "name": "action", "in": "query", "required": false, "schema": { "type": "string" }, "description": "按动作筛选，如 auth.login / article.create" },
+          { "name": "targetType", "in": "query", "required": false, "schema": { "type": "string" }, "description": "按目标类型筛选，如 user / article" },
+          { "name": "actor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "操作人用户名或 ID" },
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "搜索动作关键字" }
+        ],
+        "responses": {
+          "200": { "description": "审计日志列表", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminAuditLogListResult" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/public/articles": {
+      "get": {
+        "tags": ["公开页"],
+        "summary": "公开文章聚合列表",
+        "description": "返回已发布且公开的文章（分页），支持标签筛选、搜索、按最新/热门排序。无需登录。",
+        "security": [],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "name": "tag", "in": "query", "required": false, "schema": { "type": "string" }, "description": "按标签 slug 筛选" },
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "搜索标题/摘要" },
+          { "name": "sort", "in": "query", "required": false, "schema": { "type": "string", "enum": ["new", "hot"], "default": "new" }, "description": "new=按发布时间，hot=按阅读量" }
+        ],
+        "responses": {
+          "200": {
+            "description": "公开文章列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/PublicArticleListItem" } },
+                    "meta": { "$ref": "#/components/schemas/PaginationMeta" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/public/tags": {
+      "get": {
+        "tags": ["公开页"],
+        "summary": "公开标签云",
+        "description": "返回已发布公开文章使用到的标签及其文章数（按数量降序，最多 40 个）。无需登录。",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "标签云",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PublicTag" } } } }
+          }
+        }
+      }
+    },
+    "/api/public/authors/{username}": {
+      "get": {
+        "tags": ["公开页"],
+        "summary": "作者主页信息",
+        "description": "返回作者公开信息及文章总数。用户不存在或非 active 返回 404。无需登录。",
+        "security": [],
+        "parameters": [{ "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "作者用户名" }],
+        "responses": {
+          "200": { "description": "作者信息", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicAuthorDetail" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/public/authors/{username}/articles": {
+      "get": {
+        "tags": ["公开页"],
+        "summary": "作者的公开文章列表",
+        "description": "返回某作者的已发布公开文章（分页 + 搜索）。无需登录。",
+        "security": [],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "作者用户名" },
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "搜索标题" }
+        ],
+        "responses": {
+          "200": {
+            "description": "作者文章列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/PublicArticleListItem" } },
+                    "meta": { "$ref": "#/components/schemas/PaginationMeta" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/public/articles/{username}/{slug}": {
+      "get": {
+        "tags": ["公开页"],
+        "summary": "公开文章详情",
+        "description": "返回已发布公开文章的完整内容（含渲染后的 contentHtml），并触发阅读量 +1。无需登录。",
+        "security": [],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "作者用户名" },
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" }, "description": "文章 slug" }
+        ],
+        "responses": {
+          "200": { "description": "文章详情", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicArticleDetail" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Page": { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "default": 1 }, "description": "页码，从 1 开始" },
+      "PageSize": { "name": "pageSize", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 }, "description": "每页条数（最大 50）" },
+      "ArticleId": { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "文章 ID" },
+      "UserId": { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "用户 ID" }
+    },
+    "responses": {
+      "BadRequest": { "description": "请求参数不合法（400）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Unauthorized": { "description": "未登录或会话已失效（401）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "NotFound": { "description": "资源不存在或无权限（404，超管接口对非超管也返回 404 以隐藏存在性）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Conflict": { "description": "资源冲突，如用户名/邮箱已占用、slug 冲突（409）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "TooManyRequests": { "description": "尝试次数过多，账号被锁定（429）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+    },
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "auth.session",
+        "description": "登录后由服务端设置的 httpOnly 会话 Cookie（nuxt-auth-utils 默认名称通常为 auth.session）。所有需要登录的接口都会自动携带，无需在请求里手动传 token。适用于 Web 前端。"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "移动端 / 小程序 / API 客户端使用。`POST /api/auth/login` 响应中的 `token` 字段即此凭证，请求时放在请求头 `Authorization: Bearer <token>`。token 为无状态 HMAC 签名（base64url(payload).signature），含 sub(用户id)、v(tokenVersion)、exp(过期时间)，默认有效期 7 天。改密会使 `tokenVersion` 递增从而让旧 token 失效，登录接口会重新下发新 token。"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "statusCode": { "type": "integer", "example": 400 },
+          "statusMessage": { "type": "string", "example": "Bad Request" },
+          "message": { "type": "string", "example": "参数不合法" },
+          "data": { "type": "object", "nullable": true }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "description": "登录 / 改密后下发的 Bearer Token 凭证，移动端保存后于请求头携带 `Authorization: Bearer <token>`。",
+        "properties": {
+          "token": { "type": "string", "description": "HMAC 签名的无状态 Token（base64url(payload).signature）", "example": "eyJzdWIiOiIxMjMifQ.xxxxx" },
+          "expiresIn": { "type": "integer", "description": "有效期（秒），默认 604800（7 天）", "example": 604800 }
+        }
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer", "example": 1 },
+          "pageSize": { "type": "integer", "example": 10 },
+          "total": { "type": "integer", "example": 42 },
+          "totalPages": { "type": "integer", "example": 5 }
+        }
+      },
+      "SessionUser": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "username": { "type": "string", "example": "alice" },
+          "role": { "type": "string", "enum": ["super_admin", "author"], "example": "author" },
+          "displayName": { "type": "string", "example": "Alice" },
+          "avatarUrl": { "type": "string", "nullable": true, "example": "https://..." },
+          "tokenVersion": { "type": "integer", "example": 1 },
+          "mustChangePassword": { "type": "boolean", "example": false }
+        }
+      },
+      "ArticleDTO": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string", "example": "我的第一篇文章" },
+          "slug": { "type": "string", "example": "my-first-post" },
+          "summary": { "type": "string", "nullable": true },
+          "content": { "type": "string", "description": "Markdown 原文" },
+          "coverUrl": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+          "visibility": { "type": "string", "enum": ["public", "private"] },
+          "moderationNote": { "type": "string", "nullable": true },
+          "publishedAt": { "type": "integer", "nullable": true, "description": "Unix 毫秒时间戳" },
+          "viewCount": { "type": "integer", "example": 128 },
+          "createdAt": { "type": "integer", "description": "Unix 毫秒时间戳" },
+          "updatedAt": { "type": "integer", "description": "Unix 毫秒时间戳" },
+          "tagIds": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+          "authorId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "Tag": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "ownerId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "example": "前端" },
+          "slug": { "type": "string", "example": "frontend" },
+          "createdAt": { "type": "integer", "description": "Unix 毫秒时间戳" }
+        }
+      },
+      "PublicAuthor": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string", "example": "alice" },
+          "displayName": { "type": "string", "example": "Alice" },
+          "avatarUrl": { "type": "string", "nullable": true },
+          "bio": { "type": "string", "nullable": true }
+        }
+      },
+      "PublicArticleListItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "slug": { "type": "string" },
+          "summary": { "type": "string", "nullable": true },
+          "coverUrl": { "type": "string", "nullable": true },
+          "publishedAt": { "type": "integer", "description": "Unix 毫秒时间戳" },
+          "viewCount": { "type": "integer" },
+          "wordCount": { "type": "integer" },
+          "author": { "$ref": "#/components/schemas/PublicAuthor" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "object", "properties": { "name": { "type": "string" }, "slug": { "type": "string" } } }
+          }
+        }
+      },
+      "PublicArticleDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PublicArticleListItem" },
+          { "type": "object", "properties": { "contentHtml": { "type": "string", "description": "渲染后的 HTML 正文" } } }
+        ]
+      },
+      "PublicTag": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "example": "前端" },
+          "slug": { "type": "string", "example": "frontend" },
+          "count": { "type": "integer", "example": 12 }
+        }
+      },
+      "PublicAuthorDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PublicAuthor" },
+          { "type": "object", "properties": { "articleCount": { "type": "integer", "example": 18 }, "role": { "type": "string", "enum": ["super_admin", "author"] } } }
+        ]
+      },
+      "AdminUserListItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "username": { "type": "string" },
+          "displayName": { "type": "string" },
+          "email": { "type": "string", "nullable": true },
+          "role": { "type": "string", "enum": ["super_admin", "author"] },
+          "status": { "type": "string", "enum": ["pending", "active", "disabled", "rejected"] },
+          "avatarUrl": { "type": "string", "nullable": true },
+          "approvedBy": { "type": "string", "nullable": true },
+          "approvedAt": { "type": "integer", "nullable": true, "description": "Unix 毫秒时间戳" },
+          "rejectionReason": { "type": "string", "nullable": true },
+          "createdAt": { "type": "integer" },
+          "lastLoginAt": { "type": "integer", "nullable": true }
+        }
+      },
+      "AdminUserListResult": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/AdminUserListItem" } },
+          "meta": { "$ref": "#/components/schemas/PaginationMeta" },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "pending": { "type": "integer" },
+              "active": { "type": "integer" },
+              "disabled": { "type": "integer" },
+              "rejected": { "type": "integer" }
+            }
+          },
+          "grandTotal": { "type": "integer", "description": "不受 status 筛选影响的总数" }
+        }
+      },
+      "AdminArticleListItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "slug": { "type": "string" },
+          "summary": { "type": "string", "nullable": true },
+          "coverUrl": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+          "visibility": { "type": "string", "enum": ["public", "private"] },
+          "moderationNote": { "type": "string", "nullable": true },
+          "moderatedBy": { "type": "string", "nullable": true },
+          "moderatedByUsername": { "type": "string", "nullable": true },
+          "moderatedAt": { "type": "integer", "nullable": true },
+          "publishedAt": { "type": "integer", "nullable": true },
+          "viewCount": { "type": "integer" },
+          "wordCount": { "type": "integer" },
+          "authorId": { "type": "string" },
+          "authorUsername": { "type": "string" },
+          "authorDisplayName": { "type": "string" },
+          "authorAvatarUrl": { "type": "string", "nullable": true },
+          "createdAt": { "type": "integer" },
+          "updatedAt": { "type": "integer" },
+          "tags": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "slug": { "type": "string" } } } }
+        }
+      },
+      "AdminArticleListResult": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/AdminArticleListItem" } },
+          "meta": { "$ref": "#/components/schemas/PaginationMeta" },
+          "counts": {
+            "type": "object",
+            "properties": { "draft": { "type": "integer" }, "published": { "type": "integer" }, "archived": { "type": "integer" } }
+          },
+          "grandTotal": { "type": "integer" }
+        }
+      },
+      "AdminAuditLogItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "actorId": { "type": "string", "nullable": true },
+          "actorUsername": { "type": "string", "nullable": true },
+          "actorDisplayName": { "type": "string", "nullable": true },
+          "action": { "type": "string", "example": "article.create" },
+          "targetType": { "type": "string", "example": "article" },
+          "targetId": { "type": "string" },
+          "payload": { "type": "object", "nullable": true, "additionalProperties": true },
+          "createdAt": { "type": "integer", "description": "Unix 毫秒时间戳" }
+        }
+      },
+      "AdminAuditLogListResult": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/AdminAuditLogItem" } },
+          "meta": { "$ref": "#/components/schemas/PaginationMeta" }
+        }
+      },
+      "MyArticleListResult": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/ArticleDTO" } },
+          "meta": { "$ref": "#/components/schemas/PaginationMeta" },
+          "counts": {
+            "type": "object",
+            "properties": { "draft": { "type": "integer" }, "published": { "type": "integer" }, "archived": { "type": "integer" } }
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password", "captchaId", "captchaAnswer"],
+        "properties": {
+          "username": { "type": "string", "description": "小写，3-40 位", "example": "alice" },
+          "password": { "type": "string", "example": "password123" },
+          "captchaId": { "type": "string", "description": "来自 /api/auth/captcha 的 id" },
+          "captchaAnswer": { "type": "string", "description": "滑块最终 x 坐标（字符串）" }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["username", "password", "displayName", "captchaId", "captchaAnswer"],
+        "properties": {
+          "username": { "type": "string", "description": "小写，3-40 位" },
+          "password": { "type": "string", "minLength": 8, "maxLength": 200 },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 50 },
+          "email": { "type": "string", "format": "email", "nullable": true },
+          "captchaId": { "type": "string" },
+          "captchaAnswer": { "type": "string" }
+        }
+      },
+      "ChangePasswordRequest": {
+        "type": "object",
+        "required": ["currentPassword", "newPassword"],
+        "properties": {
+          "currentPassword": { "type": "string" },
+          "newPassword": { "type": "string", "minLength": 8, "maxLength": 200 }
+        }
+      },
+      "BootstrapRequest": {
+        "type": "object",
+        "required": ["username", "password", "displayName"],
+        "properties": {
+          "username": { "type": "string", "description": "小写，3-40 位" },
+          "password": { "type": "string", "minLength": 8, "maxLength": 200 },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 50 }
+        }
+      },
+      "ArticleUpsertRequest": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 200, "description": "创建时必填，更新时可选" },
+          "slug": { "type": "string", "description": "可选，仅小写字母/数字/连字符" },
+          "summary": { "type": "string", "maxLength": 500, "nullable": true },
+          "content": { "type": "string", "maxLength": 200000, "description": "Markdown 正文" },
+          "coverUrl": { "type": "string", "format": "uri", "maxLength": 1000, "nullable": true },
+          "tagIds": { "type": "array", "items": { "type": "string", "format": "uuid" }, "maxItems": 10 }
+        }
+      },
+      "ArticleStatusRequest": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": { "type": "string", "enum": ["publish", "unpublish", "archive"] }
+        }
+      },
+      "ProfileUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 50 },
+          "bio": { "type": "string", "maxLength": 500, "nullable": true },
+          "avatarUrl": { "type": "string", "format": "uri", "maxLength": 1000, "nullable": true }
+        }
+      },
+      "TagCreateRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 30 }
+        }
+      },
+      "RejectRequest": {
+        "type": "object",
+        "properties": {
+          "reason": { "type": "string", "maxLength": 500, "nullable": true }
+        }
+      },
+      "AdminBulkRequest": {
+        "type": "object",
+        "required": ["ids", "action"],
+        "properties": {
+          "ids": { "type": "array", "items": { "type": "string", "format": "uuid" }, "minItems": 1, "maxItems": 50 },
+          "action": { "type": "string", "enum": ["hide", "show", "delete"] }
+        }
+      },
+      "AdminArticleModerateRequest": {
+        "type": "object",
+        "description": "status / visibility / note 至少指定一项",
+        "properties": {
+          "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+          "visibility": { "type": "string", "enum": ["public", "private"] },
+          "note": { "type": "string", "maxLength": 500, "nullable": true }
+        }
+      }
+    }
+  }
+}
